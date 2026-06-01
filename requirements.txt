@@ -1,0 +1,11 @@
+imapclient
+beautifulsoup4
+pydantic
+pyyaml
+requests
+apscheduler
+keyring
+plyer
+streamlit
+pandas
+PySide6

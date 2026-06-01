@@ -1,0 +1,32 @@
+# Python 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+
+# 虚拟环境
+venv/
+env/
+.venv/
+
+# IDE 配置文件
+.vscode/
+.idea/
+*.swp
+
+# 临时文件
+*.log
+*.tmp
+*.bak
+
+# 打包生成的 exe 文件夹
+dist/
+build/
+*.spec
+
+# 系统文件
+.DS_Store        # macOS
+Thumbs.db        # Windows
+
+# 其他不需要的文件
+ui/
+README_lc.md

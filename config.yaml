@@ -1,0 +1,21 @@
+mail:
+  host: imap.chinatelecom.cn
+  port: 993
+  username: luc31@chinatelecom.cn
+  use_ssl: true
+  folder: INBOX
+
+llm:
+  endpoint: http://133.66.112.53:13206/member1/minimax-m27-2/v1/chat/completions
+  model: minimax-m2.7
+  timeout: 60
+
+task:
+  daily_run_time: "08:30"
+  lookback_days: 1
+  max_mail_count: 100
+  max_email_bytes: 80000
+
+security:
+  enable_desensitize: true
+  save_raw_email: false
