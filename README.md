@@ -1,99 +1,61 @@
 # 智能待办助手
 
-本项目是一个本地桌面端智能待办助手。
+本项目是一个本地桌面端智能待办助手，使用 **PySide6 桌面客户端 + SQLite 本地持久化**。
 
-应用会读取企业邮箱邮件，调用大模型生成邮件摘要，并尽量从每封邮件中提取最多一个待办。待办支持状态、优先级、截止时间、附件、人工新增、完成、重新打开、删除等操作。
+应用读取企业邮箱邮件，调用大模型生成邮件摘要，并尽量从每封邮件中提取最多一个待办。待办支持状态、优先级、截止时间、附件、阶段完成情况、人工新增/编辑、完成、重新打开、删除等操作。
 
+## 功能特性
 
-## 桌面客户端页面
+- **邮件拉取**：支持增量拉取（仅拉取未处理邮件）和按天拉取（指定回溯天数）两种模式
+- **大模型分析**：为每封邮件生成摘要，最多提取一个待办
+- **待办管理**：状态（未完成/已完成/已取消/已暂缓）、优先级（紧急/高/普通/低）、截止时间、附件、备注
+- **阶段完成情况**：每个待办可添加多个阶段子任务，支持复选框标记完成、截止时间、添加/删除
+- **人工待办**：支持新增和编辑，可上传附件
+- **主页概览**：统计方框（全部/逾期/紧急/高优先级/三天内截止），点击可查看筛选列表；待办清单支持排序（截止时间/优先级/创建时间/来源）
+- **已完成搜索与删除**：已完成页面支持关键字搜索和删除待办
+- **自动清理**：已完成待办最多保留 3 天或 30 条
+- **安全存储**：邮箱密码和大模型 Token 保存在系统 keyring，配置文件不存储明文凭据
 
-- 今日概览：展示有效待办、未完成、紧急、逾期、高优先级等统计，并可点击待办跳转。
-- 邮件待办：展示由邮件生成的未完成待办。
-- 人工待办：展示人工新增的未完成待办。
-- 已完成：展示已完成待办。
-- 设置：维护邮箱配置、大模型配置和 keyring 凭据。
+## 页面说明
 
-## 运行方式
+- **主页**：统计方框 + 可排序未完成待办清单
+- **邮件待办**：邮件生成的未完成待办
+- **人工待办**：人工新增的未完成待办（支持编辑）
+- **已完成**：已完成待办（支持搜索和删除）
+- **设置**：邮箱 IMAP 配置、大模型接口地址/模型名/Token、keyring 凭据管理
 
-### 1. 安装依赖
+## 快速启动
 
 ```powershell
 pip install -r requirements.txt
-```
-
-如未安装 PyInstaller：
-
-```powershell
-pip install pyinstaller
-```
-
-### 2. 启动桌面客户端
-
-```powershell
 python client\app.py
 ```
 
-### 3. 手动执行邮件分析任务
+## 手动执行邮件分析
 
 ```powershell
 python main.py
 ```
 
-通常更推荐从桌面客户端顶部的“立即分析邮件”按钮触发，因为它会在后台线程执行并刷新界面。
+或在桌面客户端主页点击"立即分析邮件"按钮。
 
-## 配置与凭据
+## 配置说明
 
-项目根目录的 `config.yaml` 是默认配置。桌面设置页保存的用户配置会写入用户数据目录中的 `config.yaml`，并覆盖默认配置中的同名项。
+默认配置在项目根目录 `aml`config.y。设置页保存的用户配置写入用户数据目录：
 
-Windows 默认用户数据目录：
+- Windows：`%APPDATA%\todo_assistant`
+- macOS：`~/Library/Application Support/todo_assistant`
+- Linux：`~/.config/todo_assistant`
 
-```text
-%APPDATA%\todo_assistant
-```
+可通过环境变量覆盖：`$env:TODO_ASSISTANT_DATA_DIR="D:\path"`
 
-macOS 默认用户数据目录：
+敏感信息（邮箱密码、大模型 Token）保存在系统 keyring，不写入配置文件。
 
-```text
-~/Library/Application Support/todo_assistant
-```
-
-Linux 默认用户数据目录：
-
-```text
-~/.config/todo_assistant
-```
-
-可以通过环境变量覆盖数据目录：
+## Windows exe 打包
 
 ```powershell
-$env:TODO_ASSISTANT_DATA_DIR="D:\todo_assistant_data"
-```
-
-- 邮箱密码保存到系统 keyring，服务名为 `todo_assistant`。
-- 大模型 Token 保存到系统 keyring，服务名为 `todo_assistant_llm`。
-- 设置页保存大模型历史配置时，只在配置文件中保存模型名、接口 URL、timeout、token_account，不保存 Token 明文。
-
-## macOS 打包说明
-
-macOS `.app` 需要在 macOS 上打包，不能可靠地从 Windows 交叉打包。
-
-建议单独维护 `todo_assistant_mac.spec`，并准备 `.icns` 图标。基本流程：
-
-```bash
-cd /path/to/todo_assistant
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
 pip install pyinstaller
-python client/app.py
-pyinstaller --clean todo_assistant_mac.spec
-open dist/智能待办助手.app
+pyinstaller --clean todo_assistant.spec
 ```
 
-
-## 开发注意事项
-
-- 涉及待办数据的改动优先走 `app/todo_manager.py` 和 repository 层。
-- 涉及配置和凭据的改动优先走 `app/settings.py`，不要直接把密码或 Token 写入配置文件。
-- 打包后要重新验证 keyring、资源路径、prompt 路径和 SQLite 数据目录。
-
+输出位置：`dist\todo_assistant\todo_assistant.exe`
