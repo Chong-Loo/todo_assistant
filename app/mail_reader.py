@@ -10,6 +10,7 @@ from imapclient import IMAPClient
 from app.mail_parser import parse_email
 from app.mail_classifier import classify_delivery_type
 from app.settings import get_mail_password, load_config
+from app.email_tracker import get_fetched_uids, record_fetched_emails
 
 
 LOCAL_TIMEZONE = "Asia/Shanghai"
@@ -263,6 +264,147 @@ def fetch_today_emails(lookback_days=None, max_email_bytes=None):
                 print(f"邮件解析失败 UID={uid}: {e}")
 
     print(f"最终成功读取邮件数量: {len(emails)}")
+    return emails
+
+
+def fetch_new_emails(max_email_bytes=None):
+    """
+    增量拉取：只拉取之前未拉取过的新邮件。
+    使用最近 30 天作为 IMAP SEARCH 窗口，排除 processed_emails 中已有的 UID。
+    """
+    config = load_config()
+    mail_cfg = config["mail"]
+
+    _, default_max_email_bytes = get_task_config(config)
+
+    if max_email_bytes is None:
+        max_email_bytes = default_max_email_bytes
+    else:
+        max_email_bytes = int(max_email_bytes)
+
+    username = mail_cfg["username"]
+    password = get_mail_password(username)
+
+    if not password:
+        raise RuntimeError("没有读取到邮箱密码")
+
+    tz = ZoneInfo(LOCAL_TIMEZONE)
+
+    now = datetime.now(tz)
+    search_start = now - timedelta(days=30)
+    since_date = search_start.strftime("%d-%b-%Y")
+
+    print(f"增量拉取模式，IMAP 搜索起始日期: {since_date}")
+    print(f"邮件下载上限: 每封最多 {max_email_bytes / 1024:.0f}KB")
+
+    emails = []
+
+    with IMAPClient(
+        mail_cfg["host"],
+        port=mail_cfg["port"],
+        ssl=mail_cfg.get("use_ssl", True)
+    ) as client:
+
+        client.login(username, password)
+        client.select_folder(mail_cfg.get("folder", "INBOX"))
+
+        t0 = time.time()
+
+        messages = client.search(["SINCE", since_date])
+
+        print(f"IMAP 粗筛邮件数量: {len(messages)}")
+        print(f"SEARCH 耗时: {time.time() - t0:.2f}s")
+
+        if not messages:
+            print("未找到任何邮件")
+            return []
+
+        mailbox = mail_cfg.get("folder", "INBOX")
+        existing_uids = get_fetched_uids(username, mailbox)
+
+        new_messages = [uid for uid in messages if int(uid) not in existing_uids]
+
+        print(f"已拉取 UID 数量: {len(existing_uids)}")
+        print(f"新增未拉取 UID 数量: {len(new_messages)}")
+
+        if not new_messages:
+            print("没有新邮件需要拉取")
+            return []
+
+        t1 = time.time()
+
+        header_response = client.fetch(
+            new_messages,
+            [
+                "INTERNALDATE",
+                "RFC822.SIZE",
+                "BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO CC DATE MESSAGE-ID)]"
+            ]
+        )
+
+        print(f"HEADER FETCH 耗时: {time.time() - t1:.2f}s")
+
+        valid_uids = []
+        uid_date_map = {}
+        uid_size_map = {}
+
+        for uid, data in header_response.items():
+            header_bytes = get_header_bytes(data)
+            mail_date = parse_header_date(header_bytes, tz)
+
+            if mail_date is None:
+                internal_date = data.get(b"INTERNALDATE")
+                if internal_date:
+                    mail_date = normalize_internal_date(internal_date, tz)
+
+            if mail_date is None:
+                continue
+
+            valid_uids.append(uid)
+            uid_date_map[uid] = mail_date
+            uid_size_map[uid] = data.get(b"RFC822.SIZE", 0)
+
+        print(f"有效新邮件 UID 数量: {len(valid_uids)}")
+
+        if not valid_uids:
+            return []
+
+        for uid in valid_uids:
+            size = uid_size_map.get(uid, 0)
+            if size:
+                print(f"待拉取邮件 UID={uid}, 原始大小={size / 1024:.1f}KB")
+
+        t2 = time.time()
+        fetch_body_key = f"BODY.PEEK[]<0.{max_email_bytes}>"
+
+        body_response = client.fetch(valid_uids, [fetch_body_key])
+        print(f"部分邮件内容 FETCH 耗时: {time.time() - t2:.2f}s")
+
+        for uid, data in body_response.items():
+            try:
+                raw_email = get_body_bytes(data)
+                if not raw_email:
+                    print(f"邮件 UID={uid} 没有正文内容，跳过")
+                    continue
+
+                mail_date = uid_date_map.get(uid)
+                parsed = parse_email(uid, raw_email, mail_date)
+                parsed["delivery_type"] = classify_delivery_type(parsed, username)
+
+                original_size = uid_size_map.get(uid, 0)
+                parsed["download_limited"] = bool(
+                    original_size and original_size > max_email_bytes
+                )
+                parsed["original_size"] = original_size
+                parsed["downloaded_size"] = len(raw_email)
+
+                emails.append(parsed)
+
+            except Exception as e:
+                print(f"邮件解析失败 UID={uid}: {e}")
+
+    record_fetched_emails(emails, username)
+    print(f"增量拉取完成，新邮件数量: {len(emails)}")
     return emails
 
 

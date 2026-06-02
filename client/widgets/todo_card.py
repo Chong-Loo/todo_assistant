@@ -5,29 +5,35 @@ import os
 import sys
 import subprocess
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
+    QLineEdit,
+    QMenu,
     QMessageBox,
+    QPushButton,
     QFileDialog,
     QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from app.todo_manager import (
+    add_stage,
+    add_todo_attachment,
+    delete_stage,
+    delete_todo_attachment,
+    delete_todo,
+    update_deadline,
     update_priority,
     update_status,
-    update_deadline,
-    add_todo_attachment,
-    delete_todo_attachment,
+    update_stage_status,
 )
 from app.todo_status import is_todo_overdue
 from client.widgets.deadline_dialog import DeadlineEditDialog
 from client.widgets.mail_detail_dialog import MailDetailDialog
-from client.widgets.painted_combo_box import PaintedComboBox
 
 
 PRIORITY_OPTIONS = [
@@ -213,6 +219,125 @@ class AttachmentRow(QFrame):
             QMessageBox.critical(self, "打开失败", str(e))
 
 
+class StageRow(QFrame):
+    status_changed = Signal(int, str)
+    delete_requested = Signal(int)
+
+    def __init__(self, stage: dict, parent=None):
+        super().__init__(parent)
+        self.stage = stage
+        self._build_ui()
+
+    def _build_ui(self):
+        self.setObjectName("StageRow")
+        self.setStyleSheet("""
+            QFrame#StageRow {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 12px;
+            }
+            QLabel#StageTitle {
+                font-size: 13px;
+                font-weight: 800;
+                color: #111827;
+            }
+            QLabel#StageDeadline {
+                font-size: 12px;
+                color: #64748b;
+            }
+            QPushButton#StageCheck {
+                border: 2px solid #d1d5db;
+                border-radius: 4px;
+                background-color: #ffffff;
+                font-size: 16px;
+                font-weight: 900;
+                color: transparent;
+                padding: 0px;
+                min-width: 22px;
+                max-width: 22px;
+                min-height: 22px;
+                max-height: 22px;
+            }
+            QPushButton#StageCheck:checked {
+                background-color: #22c55e;
+                border: 2px solid #22c55e;
+                color: #ffffff;
+            }
+            QPushButton#StageCheck:hover {
+                border-color: #94a3b8;
+            }
+            QPushButton#StageCheck:checked:hover {
+                background-color: #16a34a;
+                border-color: #16a34a;
+            }
+            QPushButton#DeleteStageButton {
+                background: #ffffff;
+                border: 1px solid #fecaca;
+                color: #b91c1c;
+                border-radius: 10px;
+                padding: 7px 12px;
+                font-weight: 800;
+            }
+            QPushButton#DeleteStageButton:hover {
+                background: #fef2f2;
+                border: 1px solid #fca5a5;
+            }
+        """)
+
+        root = QHBoxLayout(self)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(10)
+
+        self.checkbox = QPushButton()
+        self.checkbox.setObjectName("StageCheck")
+        self.checkbox.setCheckable(True)
+        self.checkbox.setChecked(self.stage.get("status") == "done")
+        self.checkbox.setText("✓" if self.stage.get("status") == "done" else "")
+        self.checkbox.clicked.connect(self._on_toggle)
+        root.addWidget(self.checkbox, 0, Qt.AlignVCenter)
+
+        left = QVBoxLayout()
+        left.setSpacing(2)
+
+        title_label = QLabel(str(self.stage.get("title", "")))
+        title_label.setObjectName("StageTitle")
+        title_label.setWordWrap(True)
+
+        if self.stage.get("status") == "done":
+            title_label.setStyleSheet("QLabel#StageTitle { color: #9ca3af; text-decoration: line-through; }")
+
+        left.addWidget(title_label)
+
+        deadline = self.stage.get("deadline")
+        if deadline:
+            deadline_label = QLabel(f"截止：{deadline}")
+            deadline_label.setObjectName("StageDeadline")
+            left.addWidget(deadline_label)
+
+        root.addLayout(left, 1)
+
+        delete_btn = QPushButton("删除")
+        delete_btn.setObjectName("DeleteStageButton")
+        delete_btn.clicked.connect(self._emit_delete)
+        root.addWidget(delete_btn, 0, Qt.AlignVCenter)
+
+    def _on_toggle(self, checked: bool):
+        self.checkbox.setText("✓" if checked else "")
+        new_status = "done" if checked else "pending"
+        self.status_changed.emit(self.stage["id"], new_status)
+
+    def _emit_delete(self):
+        confirm = QMessageBox.question(
+            self,
+            "确认删除阶段",
+            f"确定删除阶段「{self.stage.get('title', '')}」吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm == QMessageBox.Yes:
+            self.delete_requested.emit(self.stage["id"])
+
+
 class TodoCard(QFrame):
     changed = Signal()
 
@@ -221,6 +346,7 @@ class TodoCard(QFrame):
         self.todo = todo
         self.is_overdue = is_todo_overdue(todo)
         self.setObjectName("TodoCard")
+        self._stage_deadline_value: str | None = None
         self._build_ui()
 
     def _badge(self, text: str, object_name: str) -> QLabel:
@@ -274,21 +400,27 @@ class TodoCard(QFrame):
 
         badges = QHBoxLayout()
 
-        priority = self.todo.get("priority", "normal")
-        badges.addWidget(
-            self._badge(
-                PRIORITY_LABELS.get(priority, priority),
-                PRIORITY_OBJECTS.get(priority, "BadgeNormal")
-            )
+        current_priority = self.todo.get("priority", "normal")
+        self.priority_btn = QPushButton(PRIORITY_LABELS.get(current_priority, current_priority))
+        self.priority_btn.setObjectName(PRIORITY_OBJECTS.get(current_priority, "BadgeNormal"))
+        self.priority_btn.setCursor(Qt.PointingHandCursor)
+        self.priority_btn.setStyleSheet(
+            "QPushButton#BadgeUrgent { background: #fee2e2; color: #b91c1c; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
+            "QPushButton#BadgeHigh { background: #ffedd5; color: #c2410c; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
+            "QPushButton#BadgeNormal { background: #dbeafe; color: #1d4ed8; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
+            "QPushButton#BadgeLow { background: #dcfce7; color: #15803d; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
+            "QPushButton#BadgeUrgent:hover { background: #fecaca; }"
+            "QPushButton#BadgeHigh:hover { background: #fed7aa; }"
+            "QPushButton#BadgeNormal:hover { background: #bfdbfe; }"
+            "QPushButton#BadgeLow:hover { background: #bbf7d0; }"
         )
-
-        status = self.todo.get("status", "open")
-        badges.addWidget(
-            self._badge(
-                STATUS_LABELS.get(status, status),
-                STATUS_OBJECTS.get(status, "BadgeOpen")
-            )
-        )
+        self._priority_menu = QMenu(self)
+        for label, value in PRIORITY_OPTIONS:
+            action = self._priority_menu.addAction(label)
+            action.setData(value)
+            action.triggered.connect(lambda checked=False, v=value: self._change_priority(v))
+        self.priority_btn.clicked.connect(self._show_priority_menu)
+        badges.addWidget(self.priority_btn)
 
         if self.todo.get("is_manual"):
             badges.addWidget(self._badge("人工", "BadgeNormal"))
@@ -301,6 +433,8 @@ class TodoCard(QFrame):
 
         badges.addStretch(1)
         root.addLayout(badges)
+
+        status = self.todo.get("status", "open")
 
         if self.todo.get("is_manual"):
             detail_text = f"具体内容：{self.todo.get('content') or self.todo.get('reason') or '未填写'}"
@@ -337,13 +471,43 @@ class TodoCard(QFrame):
             reopen.clicked.connect(lambda: self._set_status("open"))
             action_row.addWidget(reopen)
 
-        if not self.todo.get("is_manual"):
+            delete_btn = QPushButton("删除")
+            delete_btn.setObjectName("DeleteTodoButton")
+            delete_btn.setStyleSheet(
+                """
+                QPushButton#DeleteTodoButton {
+                    background: #ffffff;
+                    border: 1px solid #fecaca;
+                    color: #b91c1c;
+                    border-radius: 14px;
+                    padding: 0px 22px;
+                    min-height: 52px;
+                    max-height: 52px;
+                    font-weight: 800;
+                }
+
+                QPushButton#DeleteTodoButton:hover {
+                    background: #fef2f2;
+                    border: 1px solid #fca5a5;
+                }
+                """
+            )
+            delete_btn.clicked.connect(self._delete_todo)
+            action_row.addWidget(delete_btn)
+
+        if self.todo.get("is_manual"):
+            edit_btn = QPushButton("编辑")
+            edit_btn.setObjectName("SecondaryButton")
+            edit_btn.clicked.connect(self._edit_todo)
+            action_row.addWidget(edit_btn)
+        else:
             mail_btn = QPushButton("查看邮件正文")
             mail_btn.setObjectName("SecondaryButton")
             mail_btn.clicked.connect(self._open_mail)
             action_row.addWidget(mail_btn)
 
         self.operation_toggle = QToolButton()
+        self.operation_toggle.setAttribute(Qt.WA_OpaquePaintEvent)
         self.operation_toggle.setCheckable(True)
         self.operation_toggle.setChecked(False)
         self.operation_toggle.setArrowType(Qt.RightArrow)
@@ -422,37 +586,6 @@ class TodoCard(QFrame):
         operation_layout.setContentsMargins(16, 16, 16, 16)
         operation_layout.setSpacing(12)
 
-        priority_section = QFrame()
-        priority_section.setObjectName("OperationSection")
-        priority_layout = QVBoxLayout(priority_section)
-        priority_layout.setContentsMargins(14, 14, 14, 14)
-        priority_layout.setSpacing(10)
-
-        priority_title = QLabel("调整优先级")
-        priority_title.setObjectName("OperationTitle")
-        priority_layout.addWidget(priority_title)
-
-        priority_row = QHBoxLayout()
-        priority_row.setSpacing(10)
-
-        self.priority_combo = PaintedComboBox()
-        for label, value in PRIORITY_OPTIONS:
-            self.priority_combo.addItem(label, value)
-
-        current_priority = self.todo.get("priority", "normal")
-        index = max(0, self.priority_combo.findData(current_priority))
-        self.priority_combo.setCurrentIndex(index)
-        priority_row.addWidget(self.priority_combo)
-
-        save_priority_btn = QPushButton("保存")
-        save_priority_btn.setObjectName("OperationButton")
-        save_priority_btn.clicked.connect(self._save_priority)
-        priority_row.addWidget(save_priority_btn)
-        priority_row.addStretch(1)
-
-        priority_layout.addLayout(priority_row)
-        operation_layout.addWidget(priority_section)
-
         attachment_section = QFrame()
         attachment_section.setObjectName("OperationSection")
         attachment_layout = QVBoxLayout(attachment_section)
@@ -486,7 +619,97 @@ class TodoCard(QFrame):
                 attachment_layout.addWidget(row)
 
         operation_layout.addWidget(attachment_section)
+
+        self._stage_section = QFrame()
+        self._stage_section.setObjectName("OperationSection")
+        stage_layout = QVBoxLayout(self._stage_section)
+        stage_layout.setContentsMargins(14, 14, 14, 14)
+        stage_layout.setSpacing(10)
+
+        stage_header = QHBoxLayout()
+        self._stage_title = QLabel(
+            f"阶段完成情况（{len(self.todo.get('stages', []))}）"
+        )
+        self._stage_title.setObjectName("OperationTitle")
+        stage_header.addWidget(self._stage_title)
+        stage_header.addStretch(1)
+        stage_layout.addLayout(stage_header)
+
+        self._stage_body_widget = QWidget()
+        self._stage_body_layout = QVBoxLayout(self._stage_body_widget)
+        self._stage_body_layout.setContentsMargins(0, 0, 0, 0)
+        self._stage_body_layout.setSpacing(10)
+        stage_layout.addWidget(self._stage_body_widget)
+        self._populate_stage_rows()
+
+        add_row = QHBoxLayout()
+        add_row.setSpacing(8)
+
+        self._stage_edit = QLineEdit()
+        self._stage_edit.setPlaceholderText("输入阶段描述...")
+        self._stage_edit.setStyleSheet("""
+            QLineEdit {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 13px;
+            }
+        """)
+        self._stage_edit.returnPressed.connect(self._add_stage)
+        add_row.addWidget(self._stage_edit, 1)
+
+        self._stage_deadline_value = None
+        self._stage_deadline_btn = QPushButton("截止")
+        self._stage_deadline_btn.setObjectName("OperationButton")
+        self._stage_deadline_btn.clicked.connect(self._pick_stage_deadline)
+        self._stage_deadline_btn.setStyleSheet("""
+            QPushButton#OperationButton {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                color: #334155;
+                border-radius: 10px;
+                padding: 8px 12px;
+                font-size: 13px;
+                font-weight: 800;
+            }
+            QPushButton#OperationButton:hover {
+                background: #f1f5f9;
+                border: 1px solid #94a3b8;
+            }
+        """)
+        add_row.addWidget(self._stage_deadline_btn, 0, Qt.AlignVCenter)
+
+        add_stage_btn = QPushButton("添加")
+        add_stage_btn.setObjectName("OperationButton")
+        add_stage_btn.clicked.connect(self._add_stage)
+        add_row.addWidget(add_stage_btn, 0, Qt.AlignVCenter)
+
+        stage_layout.addLayout(add_row)
+        operation_layout.addWidget(self._stage_section)
         root.addWidget(self.operation_panel)
+
+    def _populate_stage_rows(self):
+        while self._stage_body_layout.count():
+            item = self._stage_body_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        stages = self.todo.get("stages", [])
+        if not stages:
+            empty = QLabel("暂无阶段，可在下方添加。")
+            empty.setObjectName("OperationHint")
+            self._stage_body_layout.addWidget(empty)
+        else:
+            for stage in stages:
+                row = StageRow(stage)
+                row.status_changed.connect(self._toggle_stage_status)
+                row.delete_requested.connect(self._delete_stage)
+                self._stage_body_layout.addWidget(row)
+
+        count = len(stages)
+        self._stage_title.setText(f"阶段完成情况（{count}）")
 
     def _deadline_button_text(self):
         deadline = self.todo.get("deadline")
@@ -510,14 +733,37 @@ class TodoCard(QFrame):
         except Exception as exc:
             QMessageBox.critical(self, "状态更新失败", str(exc))
 
-    def _save_priority(self):
+    def _delete_todo(self):
+        confirm = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定永久删除待办「{self.todo.get('title', '')}」吗？\n附件也会一并删除，此操作不可撤销。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+
+        if confirm != QMessageBox.Yes:
+            return
+
         try:
-            update_priority(
-                self.todo["id"],
-                self.priority_combo.currentData()
-            )
-            QMessageBox.information(self, "保存成功", "优先级已更新。")
+            delete_todo(self.todo["id"])
             self.changed.emit()
+        except Exception as exc:
+            QMessageBox.critical(self, "删除失败", str(exc))
+
+    def _show_priority_menu(self):
+        self._priority_menu.exec(self.priority_btn.mapToGlobal(
+            self.priority_btn.rect().bottomLeft()
+        ))
+
+    def _change_priority(self, value: str):
+        try:
+            update_priority(self.todo["id"], value)
+            self.todo["priority"] = value
+            self.priority_btn.setText(PRIORITY_LABELS.get(value, value))
+            self.priority_btn.setObjectName(PRIORITY_OBJECTS.get(value, "BadgeNormal"))
+            self.priority_btn.style().unpolish(self.priority_btn)
+            self.priority_btn.style().polish(self.priority_btn)
         except Exception as exc:
             QMessageBox.critical(self, "优先级更新失败", str(exc))
 
@@ -534,15 +780,23 @@ class TodoCard(QFrame):
         except Exception as exc:
             QMessageBox.critical(self, "截止时间更新失败", str(exc))
 
+    def _edit_todo(self):
+        from client.widgets.manual_todo_dialog import ManualTodoDialog
+        dialog = ManualTodoDialog(todo=self.todo, parent=self)
+        if dialog.exec():
+            self.changed.emit()
+
     def _open_mail(self):
         dialog = MailDetailDialog(self.todo, self)
         dialog.exec()
 
     def _toggle_operation_panel(self, checked: bool):
+        self.setUpdatesEnabled(False)
         self.operation_panel.setVisible(checked)
         self.operation_toggle.setArrowType(
             Qt.DownArrow if checked else Qt.RightArrow
         )
+        self.setUpdatesEnabled(True)
 
     def _upload_attachments(self):
         paths, _ = QFileDialog.getOpenFileNames(
@@ -599,3 +853,59 @@ class TodoCard(QFrame):
 
         except Exception as exc:
             QMessageBox.critical(self, "删除失败", str(exc))
+
+    def _toggle_stage_status(self, stage_id: int, new_status: str):
+        try:
+            updated = update_stage_status(stage_id, new_status)
+            for i, s in enumerate(self.todo.get("stages", [])):
+                if s["id"] == stage_id:
+                    self.todo["stages"][i] = updated
+                    break
+            self._populate_stage_rows()
+        except Exception as exc:
+            QMessageBox.critical(self, "阶段状态更新失败", str(exc))
+
+    def _delete_stage(self, stage_id: int):
+        try:
+            delete_stage(stage_id)
+            self.todo["stages"] = [
+                s for s in self.todo.get("stages", [])
+                if s["id"] != stage_id
+            ]
+            self._populate_stage_rows()
+        except Exception as exc:
+            QMessageBox.critical(self, "阶段删除失败", str(exc))
+
+    def _pick_stage_deadline(self):
+        from PySide6.QtWidgets import QInputDialog
+
+        initial = self._stage_deadline_value or QDate.currentDate().toString("yyyy-MM-dd")
+        text, ok = QInputDialog.getText(
+            self, "阶段截止时间", "请输入截止日期（YYYY-MM-DD）：", text=initial
+        )
+        if ok and text.strip():
+            self._stage_deadline_value = text.strip()
+            self._stage_deadline_btn.setText(f"截止：{self._stage_deadline_value}")
+        elif ok:
+            self._stage_deadline_value = None
+            self._stage_deadline_btn.setText("截止")
+
+    def _add_stage(self):
+        title = self._stage_edit.text().strip()
+        if not title:
+            QMessageBox.information(self, "提示", "请输入阶段描述。")
+            return
+
+        try:
+            new_stage = add_stage(
+                todo_id=self.todo["id"],
+                title=title,
+                deadline=self._stage_deadline_value,
+            )
+            self.todo.setdefault("stages", []).append(new_stage)
+            self._stage_edit.clear()
+            self._stage_deadline_value = None
+            self._stage_deadline_btn.setText("截止")
+            self._populate_stage_rows()
+        except Exception as exc:
+            QMessageBox.critical(self, "阶段添加失败", str(exc))

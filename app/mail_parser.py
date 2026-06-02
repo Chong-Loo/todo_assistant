@@ -19,6 +19,7 @@ def decode_text(value):
     return result
 
 
+# 提取邮件正文
 def extract_body(msg):
     text_parts = []
     html_parts = []
@@ -66,11 +67,12 @@ def extract_body(msg):
     return ""
 
 
+# 解析
 def parse_email(uid, raw_bytes, internal_date):
     msg = message_from_bytes(raw_bytes)
 
     return {
-        "uid": str(uid),
+        "uid": str(uid),            # 邮件的唯一标识
         "from": decode_text(msg.get("From")),
         "to": decode_text(msg.get("To")),
         "cc": decode_text(msg.get("Cc")),

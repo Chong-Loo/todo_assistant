@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QComboBox,
+    QDialog,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QFrame,
     QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
 from app.todo_manager import load_normalized_todos
@@ -29,10 +34,113 @@ PRIORITY_STYLES = {
 }
 
 
+def _deadline_within_days(todo: dict, days: int) -> bool:
+    deadline = todo.get("deadline")
+    if not deadline:
+        return False
+    try:
+        dl = datetime.strptime(deadline[:10], "%Y-%m-%d")
+        return dl <= datetime.now() + timedelta(days=days)
+    except ValueError:
+        return False
+
+
+class DeadlinePopup(QDialog):
+    todo_selected = Signal(str)
+
+    def __init__(self, title_text: str, todos: list[dict], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title_text)
+        self.setModal(False)
+        self.resize(520, 420)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(20, 18, 20, 18)
+        root.setSpacing(12)
+
+        title = QLabel(f"{title_text}（{len(todos)} 条）")
+        title.setStyleSheet("font-size: 18px; font-weight: 900; color: #111827;")
+        root.addWidget(title)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+
+        for todo in todos:
+            card = self._make_todo_row(todo)
+            layout.addWidget(card)
+
+        layout.addStretch(1)
+        scroll.setWidget(content)
+        root.addWidget(scroll, 1)
+
+    def _make_todo_row(self, todo: dict) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName("RecentTodoCard")
+        frame.setCursor(Qt.PointingHandCursor)
+        frame.todo_id = str(todo.get("id", ""))
+        frame.setStyleSheet("""
+            QFrame#RecentTodoCard {
+                background: #ffffff;
+                border: 1px solid #e5eaf1;
+                border-radius: 14px;
+            }
+            QFrame#RecentTodoCard:hover {
+                background: #fbfdff;
+                border: 1px solid #bfdbfe;
+            }
+        """)
+
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(14, 12, 14, 12)
+        row.setSpacing(12)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(4)
+
+        title = QLabel(str(todo.get("title") or "未命名"))
+        title.setStyleSheet("font-size: 14px; font-weight: 800; color: #111827;")
+        title.setWordWrap(True)
+        text_col.addWidget(title)
+
+        deadline = todo.get("deadline") or "无截止"
+        meta = QLabel(f"截止：{deadline}")
+        meta.setStyleSheet("font-size: 12px; color: #64748b;")
+        text_col.addWidget(meta)
+
+        row.addLayout(text_col, 1)
+
+        priority = todo.get("priority", "normal")
+        bg, fg, _border = PRIORITY_STYLES.get(priority, PRIORITY_STYLES["normal"])
+        badge = QLabel(PRIORITY_LABELS.get(priority, ""))
+        badge.setAlignment(Qt.AlignCenter)
+        badge.setStyleSheet(
+            f"background: {bg}; color: {fg}; border-radius: 8px; "
+            f"padding: 4px 10px; font-size: 12px; font-weight: 800;"
+        )
+        row.addWidget(badge, 0, Qt.AlignVCenter)
+
+        frame.mousePressEvent = lambda e, fid=frame.todo_id: (
+            self.todo_selected.emit(fid) if e.button() == Qt.LeftButton else None,
+            self.close()
+        ) and None
+
+        return frame
+
+
 class MetricCard(QFrame):
-    def __init__(self, title: str, value: int, parent=None):
+    clicked = Signal()
+
+    def __init__(self, title: str, value: int, clickable: bool = False, parent=None):
         super().__init__(parent)
         self.setObjectName("MetricCard")
+        if clickable:
+            self.setCursor(Qt.PointingHandCursor)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 16, 18, 16)
@@ -45,6 +153,11 @@ class MetricCard(QFrame):
         value_label = QLabel(str(value))
         value_label.setObjectName("MetricValue")
         layout.addWidget(value_label)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class PriorityBadge(QLabel):
@@ -194,7 +307,7 @@ class RecentTodoCard(QFrame):
 
 class DashboardPage(QWidget):
     """
-    今日概览：
+    待办概览：
     1. 最近未完成待办展示成卡片清单；
     2. 按优先级标记颜色；
     3. 点击卡片后把 todo_id 发送给主窗口完成跳转。
@@ -212,11 +325,11 @@ class DashboardPage(QWidget):
         self.root.setContentsMargins(0, 0, 0, 0)
         self.root.setSpacing(18)
 
-        title = QLabel("今日概览")
+        title = QLabel("主页")
         title.setObjectName("SectionTitle")
         self.root.addWidget(title)
 
-        hint = QLabel("点击任一未完成待办，可直接跳转到对应详情卡片。")
+        hint = QLabel("方框可点击查看筛选列表，待办清单可选择排序方式，点击卡片可跳转到详情。")
         hint.setObjectName("SectionHint")
         self.root.addWidget(hint)
 
@@ -230,9 +343,40 @@ class DashboardPage(QWidget):
         panel_layout.setContentsMargins(18, 16, 18, 18)
         panel_layout.setSpacing(14)
 
-        recent_title = QLabel("最近未完成待办")
+        recent_header = QHBoxLayout()
+        recent_title = QLabel("未完成待办清单")
         recent_title.setObjectName("SectionTitle")
-        panel_layout.addWidget(recent_title)
+        recent_header.addWidget(recent_title)
+        recent_header.addStretch(1)
+
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItem("截止时间", "deadline")
+        self.sort_combo.addItem("优先级", "priority")
+        self.sort_combo.addItem("创建时间", "created_at")
+        self.sort_combo.addItem("邮件/人工", "source")
+        self.sort_combo.setStyleSheet("""
+            QComboBox {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                padding: 6px 12px;
+                font-size: 13px;
+                font-weight: 800;
+                color: #334155;
+                min-width: 100px;
+            }
+            QComboBox:hover {
+                border-color: #94a3b8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 24px;
+            }
+        """)
+        self.sort_combo.currentIndexChanged.connect(self.reload)
+        recent_header.addWidget(self.sort_combo)
+
+        panel_layout.addLayout(recent_header)
 
         self.recent_scroll = QScrollArea()
         self.recent_scroll.setWidgetResizable(True)
@@ -255,22 +399,21 @@ class DashboardPage(QWidget):
             if todo.get("status", "open") in {"open", "snoozed"}
         ]
 
-        open_count = sum(
-            1 for todo in todos
-            if todo.get("status", "open") == "open"
-        )
-        urgent_count = sum(
-            1 for todo in active
+        self._overdue_todos = [
+            todo for todo in active if is_todo_overdue(todo)
+        ]
+        self._urgent_todos = [
+            todo for todo in active
             if todo.get("priority") == "urgent"
-        )
-        high_count = sum(
-            1 for todo in active
+        ]
+        self._high_todos = [
+            todo for todo in active
             if todo.get("priority") == "high"
-        )
-        overdue_count = sum(
-            1 for todo in active
-            if is_todo_overdue(todo)
-        )
+        ]
+        self._deadline_soon = [
+            todo for todo in active
+            if _deadline_within_days(todo, 3)
+        ]
 
         while self.metrics_row.count():
             item = self.metrics_row.takeAt(0)
@@ -278,14 +421,18 @@ class DashboardPage(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        for title, value in [
-            ("有效待办", len(active)),
-            ("未完成", open_count),
-            ("紧急", urgent_count),
-            ("逾期", overdue_count),
-            ("高优先级", high_count),
-        ]:
-            self.metrics_row.addWidget(MetricCard(title, value))
+        cards = [
+            ("全部待办", len(active), False, None),
+            ("逾期", len(self._overdue_todos), True, self._show_overdue_popup),
+            ("紧急", len(self._urgent_todos), True, self._show_urgent_popup),
+            ("高优先级", len(self._high_todos), True, self._show_high_popup),
+            ("三天内截止", len(self._deadline_soon), True, self._show_deadline_popup),
+        ]
+        for title, value, clickable, slot in cards:
+            card = MetricCard(title, value, clickable=clickable)
+            if slot:
+                card.clicked.connect(slot)
+            self.metrics_row.addWidget(card)
 
         while self.recent_layout.count():
             item = self.recent_layout.takeAt(0)
@@ -293,16 +440,60 @@ class DashboardPage(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
-        if not active:
+        sort_key = self.sort_combo.currentData()
+        PRIORITY_ORDER = {"urgent": 0, "high": 1, "normal": 2, "low": 3}
+
+        def sort_fn(t):
+            if sort_key == "deadline":
+                dl = t.get("deadline") or "9999-99-99"
+                return dl[:10]
+            elif sort_key == "priority":
+                return PRIORITY_ORDER.get(t.get("priority", "normal"), 99)
+            elif sort_key == "source":
+                return 0 if t.get("is_manual") else 1
+            else:
+                return t.get("created_at") or ""
+
+        sorted_active = sorted(active, key=sort_fn)
+
+        if not sorted_active:
             empty = QLabel("暂无未完成待办。")
             empty.setObjectName("SectionHint")
             self.recent_layout.addWidget(empty)
             self.recent_layout.addStretch(1)
             return
 
-        for todo in active:
+        for todo in sorted_active:
             card = RecentTodoCard(todo)
             card.clicked.connect(self.todo_selected.emit)
             self.recent_layout.addWidget(card)
 
         self.recent_layout.addStretch(1)
+
+    def _show_overdue_popup(self):
+        if not self._overdue_todos:
+            return
+        popup = DeadlinePopup("逾期待办", self._overdue_todos, self)
+        popup.todo_selected.connect(self.todo_selected.emit)
+        popup.show()
+
+    def _show_urgent_popup(self):
+        if not self._urgent_todos:
+            return
+        popup = DeadlinePopup("紧急待办", self._urgent_todos, self)
+        popup.todo_selected.connect(self.todo_selected.emit)
+        popup.show()
+
+    def _show_high_popup(self):
+        if not self._high_todos:
+            return
+        popup = DeadlinePopup("高优先级待办", self._high_todos, self)
+        popup.todo_selected.connect(self.todo_selected.emit)
+        popup.show()
+
+    def _show_deadline_popup(self):
+        if not self._deadline_soon:
+            return
+        popup = DeadlinePopup("三天内截止待办", self._deadline_soon, self)
+        popup.todo_selected.connect(self.todo_selected.emit)
+        popup.show()

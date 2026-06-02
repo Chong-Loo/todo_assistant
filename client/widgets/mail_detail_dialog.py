@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from html import escape, unescape
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -142,15 +142,11 @@ class MailDetailDialog(QDialog):
     6. 长邮件仍可在正文框内滚动查看。
     """
 
-    BODY_MIN_HEIGHT = 240
-    BODY_MAX_HEIGHT = 560
-
     def __init__(self, todo: dict, parent=None):
         super().__init__(parent)
         self.todo = todo
         self.setWindowTitle("查看来源邮件正文")
         self.resize(1080, 780)
-        self.setMinimumSize(920, 640)
         self.setModal(True)
         self._build_ui()
 
@@ -355,9 +351,7 @@ class MailDetailDialog(QDialog):
         self.body_box.setOpenExternalLinks(True)
         self.body_box.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.body_box.setHtml(build_mail_body_html(body_text))
-        self.body_box.setMinimumHeight(self.BODY_MIN_HEIGHT)
-        self.body_box.setMaximumHeight(self.BODY_MAX_HEIGHT)
-        root.addWidget(self.body_box)
+        root.addWidget(self.body_box, 1)
 
         footer = QHBoxLayout()
         footer.addStretch(1)
@@ -369,24 +363,8 @@ class MailDetailDialog(QDialog):
 
         root.addLayout(footer)
 
-        QTimer.singleShot(0, self._adjust_body_height)
-
     def _toggle_recipients(self, checked: bool):
         self.recipient_panel.setVisible(checked)
         self.recipient_toggle.setArrowType(
             Qt.DownArrow if checked else Qt.RightArrow
         )
-
-    def _adjust_body_height(self):
-        """
-        根据正文实际内容自动调节正文阅读框高度。
-        短邮件不再出现大面积留白；
-        长邮件超过上限后使用内部滚动。
-        """
-        document_height = int(self.body_box.document().size().height())
-        target_height = document_height + 48
-
-        target_height = max(self.BODY_MIN_HEIGHT, target_height)
-        target_height = min(self.BODY_MAX_HEIGHT, target_height)
-
-        self.body_box.setFixedHeight(target_height)

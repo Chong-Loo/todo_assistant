@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.db import init_db, DATA_DIR
-from app.repository import attachment_repo, todo_repo
+from app.repository import attachment_repo, stage_repo, todo_repo
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -87,6 +87,19 @@ def attachment_record_to_ui(attachment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _stage_record_to_ui(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": record["id"],
+        "todo_id": record["todo_id"],
+        "title": record["title"],
+        "deadline": record.get("deadline"),
+        "status": record["status"],
+        "sort_order": record["sort_order"],
+        "created_at": record["created_at"],
+        "completed_at": record.get("completed_at"),
+    }
+
+
 def hydrate_todo(todo: dict[str, Any]) -> dict[str, Any]:
     hydrated = dict(todo)
     todo_id = str(hydrated.get("id", ""))
@@ -95,6 +108,10 @@ def hydrate_todo(todo: dict[str, Any]) -> dict[str, Any]:
     hydrated["attachments"] = [
         attachment_record_to_ui(attachment)
         for attachment in attachment_repo.list_attachments(todo_id)
+    ]
+    hydrated["stages"] = [
+        _stage_record_to_ui(stage)
+        for stage in stage_repo.list_stages(todo_id)
     ]
 
     return hydrated
@@ -367,6 +384,83 @@ def add_note(todo_id, note):
     return updated
 
 
+def list_stages(todo_id: str) -> list[dict[str, Any]]:
+    init_db()
+    return [
+        _stage_record_to_ui(stage)
+        for stage in stage_repo.list_stages(str(todo_id))
+    ]
+
+
+def add_stage(
+    todo_id: str,
+    title: str,
+    deadline: str | None = None,
+) -> dict[str, Any]:
+    init_db()
+    cur_stages = stage_repo.list_stages(str(todo_id))
+    sort_order = len(cur_stages)
+    now = now_str()
+
+    stage = stage_repo.insert_stage(
+        todo_id=str(todo_id),
+        title=title.strip(),
+        deadline=deadline,
+        sort_order=sort_order,
+        created_at=now,
+    )
+
+    todo_repo.update_todo_fields(
+        str(todo_id),
+        updated_at=now,
+    )
+
+    return _stage_record_to_ui(stage)
+
+
+def update_stage_status(stage_id: int, status: str) -> dict[str, Any]:
+    init_db()
+    if status not in ("pending", "done"):
+        raise ValueError(f"非法阶段状态: {status}")
+
+    updates: dict[str, Any] = {"status": status}
+    if status == "done":
+        updates["completed_at"] = now_str()
+    else:
+        updates["completed_at"] = None
+
+    stage = stage_repo.update_stage_fields(stage_id, **updates)
+
+    todo_repo.update_todo_fields(
+        str(stage["todo_id"]),
+        updated_at=now_str(),
+    )
+
+    return _stage_record_to_ui(stage)
+
+
+def delete_stage(stage_id: int) -> bool:
+    init_db()
+    stage = stage_repo.get_stage_by_id(stage_id)
+    if stage is None:
+        raise RuntimeError(f"没有找到阶段 ID: {stage_id}")
+
+    todo_id = str(stage["todo_id"])
+    stage_repo.delete_stage(stage_id)
+
+    remaining = stage_repo.list_stages(todo_id)
+    for i, s in enumerate(remaining):
+        if s["sort_order"] != i:
+            stage_repo.update_stage_fields(s["id"], sort_order=i)
+
+    todo_repo.update_todo_fields(
+        todo_id,
+        updated_at=now_str(),
+    )
+
+    return True
+
+
 def add_manual_todo(
     title,
     priority="normal",
@@ -420,6 +514,52 @@ def add_manual_todo(
         raise RuntimeError("待办已写入，但读取失败")
 
     return created
+
+
+def edit_manual_todo(
+    todo_id: str,
+    *,
+    title: str | None = None,
+    priority: str | None = None,
+    deadline: str | None | bool = None,
+    content: str | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    init_db()
+    current = get_todo(todo_id)
+    if current is None:
+        raise RuntimeError(f"没有找到待办 ID: {todo_id}")
+    if not current.get("is_manual"):
+        raise RuntimeError("只能编辑人工待办")
+
+    updates: dict[str, Any] = {}
+    if title is not None:
+        updates["title"] = title.strip()
+    if priority is not None:
+        if priority not in VALID_PRIORITIES:
+            raise ValueError(f"非法优先级: {priority}")
+        updates["priority"] = priority
+    if deadline is not False:
+        updates["deadline"] = deadline
+    elif deadline is None:
+        updates["deadline"] = None
+    if content is not None:
+        normalized = str(content).strip()
+        updates["content"] = normalized
+        updates["reason"] = normalized
+    if note is not None:
+        updates["note"] = note
+
+    if not updates:
+        return current
+
+    todo_repo.update_todo_fields(todo_id, **updates)
+
+    updated = get_todo(todo_id)
+    if updated is None:
+        raise RuntimeError("更新后未能读取待办")
+
+    return updated
 
 
 def add_todo_attachment(todo_id, filename, content):

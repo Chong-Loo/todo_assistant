@@ -12,7 +12,7 @@ llm:
 
 task:
   daily_run_time: "08:30"
-  lookback_days: 1      
+  lookback_days: 0      
   max_mail_count: 100
   max_email_bytes: 80000
 

@@ -47,6 +47,11 @@ def parse_deadline(deadline: str | None):
     return QDate.currentDate(), 18, 0, False
 
 
+class NoWheelSpinBox(QSpinBox):
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class CompactTimeSpin(QFrame):
     """
     紧凑型时间数字选择器：
@@ -77,7 +82,7 @@ class CompactTimeSpin(QFrame):
         root.setContentsMargins(1, 1, 1, 1)
         root.setSpacing(0)
 
-        self.spin_box = QSpinBox()
+        self.spin_box = NoWheelSpinBox()
         self.spin_box.setObjectName("CompactTimeValue")
         self.spin_box.setRange(minimum, maximum)
         self.spin_box.setValue(value)
@@ -151,8 +156,7 @@ class DeadlineEditDialog(QDialog):
     def __init__(self, current_deadline: str | None = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("设置截止时间")
-        self.resize(520, 530)
-        self.setMinimumSize(480, 500)
+        self.resize(520, 580)
         self.setModal(True)
 
         self.deadline_value: str | None = current_deadline
@@ -193,6 +197,65 @@ class DeadlineEditDialog(QDialog):
                 background: #ffffff;
                 border: none;
                 font-size: 14px;
+            }
+
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background: #f8fafc;
+                border-bottom: 1px solid #e5e7eb;
+            }
+
+            QCalendarWidget QToolButton#qt_calendar_monthbutton,
+            QCalendarWidget QToolButton#qt_calendar_yearbutton {
+                color: #111827;
+                font-size: 16px;
+                font-weight: 900;
+                background: transparent;
+                border: none;
+                padding: 2px 8px;
+            }
+
+            QCalendarWidget QToolButton#qt_calendar_monthbutton:hover,
+            QCalendarWidget QToolButton#qt_calendar_yearbutton:hover {
+                background: #eef2ff;
+                border-radius: 8px;
+            }
+
+            QCalendarWidget QHeaderView {
+                background: #ffffff;
+                color: #64748b;
+                font-size: 13px;
+                font-weight: 800;
+                border: none;
+                padding: 0px;
+            }
+
+            QCalendarWidget QHeaderView::section {
+                background: #ffffff;
+                color: #64748b;
+                font-size: 13px;
+                font-weight: 800;
+                border: none;
+                padding: 4px 0px;
+            }
+
+            QCalendarWidget QAbstractItemView {
+                background: #ffffff;
+                selection-background-color: #2563eb;
+                selection-color: #ffffff;
+                color: #1f2937;
+                font-size: 14px;
+                outline: none;
+                padding: 1px;
+            }
+
+            QCalendarWidget QAbstractItemView:disabled {
+                color: #cbd5e1;
+            }
+
+            QCalendarWidget QAbstractItemView:enabled:hover {
+                background: #dbeafe;
+                color: #1d4ed8;
+                border-radius: 20px;
             }
 
             QFrame#TimeSection {
@@ -377,7 +440,10 @@ class DeadlineEditDialog(QDialog):
 
         self.calendar = QCalendarWidget()
         self.calendar.setSelectedDate(self._initial_date)
-        self.calendar.setGridVisible(True)
+        self.calendar.setFirstDayOfWeek(Qt.Monday)
+        self.calendar.setMaximumDate(QDate(2099, 12, 31))
+        self.calendar.setMinimumDate(QDate(2020, 1, 1))
+        self.calendar.setVerticalHeaderFormat(QCalendarWidget.NoVerticalHeader)
         panel_layout.addWidget(self.calendar)
 
         time_section = QFrame()

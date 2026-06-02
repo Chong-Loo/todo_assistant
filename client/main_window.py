@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QStackedWidget,
     QMessageBox,
+    QSpinBox,
+    QSizePolicy,
 )
 
 from app.todo_manager import load_normalized_todos
@@ -62,7 +64,7 @@ class MainWindow(QMainWindow):
         self.nav_group.setExclusive(True)
 
         nav_items = [
-            ("今日概览", 0),
+            ("主页", 0),
             ("邮件待办", 1),
             ("人工待办", 2),
             ("已完成", 3),
@@ -93,9 +95,9 @@ class MainWindow(QMainWindow):
         body_layout.setContentsMargins(26, 22, 26, 22)
         body_layout.setSpacing(18)
 
-        header = QFrame()
-        header.setObjectName("HeaderPanel")
-        header_layout = QHBoxLayout(header)
+        self.header = QFrame()
+        self.header.setObjectName("HeaderPanel")
+        header_layout = QHBoxLayout(self.header)
         header_layout.setContentsMargins(22, 18, 22, 18)
         header_layout.setSpacing(16)
 
@@ -110,13 +112,22 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(header_text, 1)
 
         self.lookback_combo = PaintedComboBox()
-        self.lookback_combo.addItem("最近 1 天", 1)
-        self.lookback_combo.addItem("最近 2 天", 2)
-        self.lookback_combo.addItem("最近 3 天", 3)
-        self.lookback_combo.addItem("最近 5 天", 5)
-        self.lookback_combo.addItem("最近 7 天", 7)
-        self.lookback_combo.addItem("最近 14 天", 14)
+        self.lookback_combo.addItem("最新邮件（增量）", 0)
+        self.lookback_combo.addItem("按天拉取", -1)
+        self.lookback_combo.currentIndexChanged.connect(self._on_lookback_mode_changed)
         header_layout.addWidget(self.lookback_combo)
+
+        self.lookback_spinbox = QSpinBox()
+        self.lookback_spinbox.setRange(1, 30)
+        self.lookback_spinbox.setValue(1)
+        self.lookback_spinbox.setSuffix(" 天")
+        self.lookback_spinbox.setButtonSymbols(QSpinBox.NoButtons)
+        self.lookback_spinbox.setMinimumHeight(48)
+        self.lookback_spinbox.setMaximumHeight(48)
+        self.lookback_spinbox.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.lookback_spinbox.setFixedWidth(100)
+        self.lookback_spinbox.hide()
+        header_layout.addWidget(self.lookback_spinbox)
 
         self.analyze_button = QPushButton("立即分析邮件")
         self.analyze_button.setObjectName("PrimaryButton")
@@ -128,7 +139,7 @@ class MainWindow(QMainWindow):
         refresh_button.clicked.connect(self._refresh_all)
         header_layout.addWidget(refresh_button)
 
-        body_layout.addWidget(header)
+        body_layout.addWidget(self.header)
 
         self.stack = QStackedWidget()
         self.dashboard_page = DashboardPage()
@@ -153,6 +164,7 @@ class MainWindow(QMainWindow):
 
     def _switch_page(self, index: int):
         self.stack.setCurrentIndex(index)
+        self.header.setVisible(index == 0)
 
     def _refresh_all(self):
         self.dashboard_page.reload()
@@ -168,11 +180,16 @@ class MainWindow(QMainWindow):
             self._refresh_all()
             self.statusBar().showMessage("人工待办已保存", 4000)
 
+    def _on_lookback_mode_changed(self):
+        mode = self.lookback_combo.currentData()
+        self.lookback_spinbox.setVisible(mode == -1)
+
     def _run_daily_job(self):
         if self.worker_thread and self.worker_thread.isRunning():
             return
 
-        lookback_days = self.lookback_combo.currentData()
+        mode = self.lookback_combo.currentData()
+        lookback_days = self.lookback_spinbox.value() if mode == -1 else 0
         self.analyze_button.setEnabled(False)
         self.statusBar().showMessage("正在执行邮件分析...")
 

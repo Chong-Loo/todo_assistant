@@ -1,6 +1,8 @@
 from datetime import date
 
-from app.mail_reader import fetch_today_emails
+from app.mail_reader import fetch_new_emails, fetch_today_emails
+from app.email_tracker import record_fetched_emails
+from app.settings import load_config
 from app.todo_extractor import extract_todos_from_emails
 from app.storage import (
     save_daily_report,
@@ -20,11 +22,21 @@ def run_daily_job(lookback_days=None):
 
     logger.info("开始读取邮件")
 
-    emails = fetch_today_emails(
-        lookback_days=lookback_days
-    )
+    if lookback_days is None or lookback_days == 0:
+        emails = fetch_new_emails()
+        mode = "incremental"
+    else:
+        emails = fetch_today_emails(lookback_days=lookback_days)
+        mode = "lookback"
+        config = load_config()
+        mail_cfg = config.get("mail", {})
+        record_fetched_emails(
+            emails,
+            username=str(mail_cfg.get("username", "")),
+            mailbox=str(mail_cfg.get("folder", "INBOX")),
+        )
 
-    logger.info(f"读取邮件完成，数量: {len(emails)}")
+    logger.info(f"读取邮件完成（模式={mode}），数量: {len(emails)}")
 
     logger.info("开始分析邮件")
     report = extract_todos_from_emails(emails)

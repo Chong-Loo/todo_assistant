@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
 )
 
-from app.todo_manager import add_manual_todo, add_todo_attachment
+from app.todo_manager import add_manual_todo, add_todo_attachment, edit_manual_todo
 from client.widgets.deadline_dialog import DeadlineEditDialog
 from client.widgets.painted_combo_box import PaintedComboBox
 
@@ -31,16 +31,30 @@ PRIORITY_OPTIONS = [
 
 
 class ManualTodoDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, todo: dict | None = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("人工添加待办")
+        self.todo = todo
+        self.is_edit = todo is not None
+        self.setWindowTitle("编辑待办" if self.is_edit else "人工添加待办")
         self.resize(640, 650)
         self.setModal(True)
 
         self.file_paths: list[str] = []
-        self.deadline_value: str | None = None
+        self.deadline_value: str | None = (todo.get("deadline") or None) if todo else None
 
         self._build_ui()
+        if self.is_edit:
+            self._populate_from_todo()
+
+    def _populate_from_todo(self):
+        self.title_input.setText(str(self.todo.get("title", "")))
+        priority = self.todo.get("priority", "normal")
+        idx = self.priority_combo.findData(priority)
+        if idx >= 0:
+            self.priority_combo.setCurrentIndex(idx)
+        self.deadline_button.setText(self._deadline_button_text())
+        self.content_input.setPlainText(str(self.todo.get("content") or self.todo.get("reason") or ""))
+        self.note_input.setPlainText(str(self.todo.get("note") or ""))
 
     def _build_ui(self):
         self.setStyleSheet(
@@ -186,21 +200,31 @@ class ManualTodoDialog(QDialog):
         note = self.note_input.toPlainText().strip()
 
         try:
-            todo = add_manual_todo(
-                title=title,
-                priority=priority,
-                deadline=self.deadline_value,
-                content=content,
-                note=note
-            )
-
-            for file_path in self.file_paths:
-                path = Path(file_path)
-                add_todo_attachment(
-                    todo["id"],
-                    path.name,
-                    path.read_bytes()
+            if self.is_edit:
+                edit_manual_todo(
+                    self.todo["id"],
+                    title=title,
+                    priority=priority,
+                    deadline=self.deadline_value,
+                    content=content,
+                    note=note,
                 )
+            else:
+                todo = add_manual_todo(
+                    title=title,
+                    priority=priority,
+                    deadline=self.deadline_value,
+                    content=content,
+                    note=note
+                )
+
+                for file_path in self.file_paths:
+                    path = Path(file_path)
+                    add_todo_attachment(
+                        todo["id"],
+                        path.name,
+                        path.read_bytes()
+                    )
 
             self.accept()
         except Exception as exc:

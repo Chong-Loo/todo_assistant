@@ -1,6 +1,7 @@
 from email.utils import getaddresses
 
 
+# 提取邮件地址
 def extract_emails(address_text):
     if not address_text:
         return set()
@@ -18,6 +19,7 @@ def extract_emails(address_text):
     return result
 
 
+# 判断送达类型
 def classify_delivery_type(mail, account_email):
     account_email = str(account_email or "").strip().lower()
 

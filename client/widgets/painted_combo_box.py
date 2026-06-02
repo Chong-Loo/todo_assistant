@@ -17,6 +17,7 @@ class PaintedComboBox(QComboBox):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_OpaquePaintEvent)
         self.setMinimumHeight(52)
         self.setMaximumHeight(52)
         self.setCursor(Qt.PointingHandCursor)

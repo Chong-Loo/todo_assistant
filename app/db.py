@@ -97,6 +97,37 @@ ON todos(created_at);
 
 CREATE INDEX IF NOT EXISTS idx_todo_attachments_todo_id
 ON todo_attachments(todo_id);
+
+CREATE TABLE IF NOT EXISTS processed_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid INTEGER NOT NULL,
+    message_id TEXT,
+    subject TEXT,
+    from_addr TEXT,
+    date TEXT,
+    fetched_at TEXT NOT NULL,
+    mailbox TEXT NOT NULL DEFAULT 'INBOX',
+    username TEXT NOT NULL,
+    UNIQUE(username, mailbox, uid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_processed_emails_lookup
+ON processed_emails(username, mailbox, uid);
+
+CREATE TABLE IF NOT EXISTS todo_stages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    todo_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    deadline TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    FOREIGN KEY(todo_id) REFERENCES todos(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_todo_stages_todo_id
+ON todo_stages(todo_id);
 """
 
 

@@ -33,6 +33,11 @@ from app.settings import (
 )
 
 
+class NoWheelSpinBox(QSpinBox):
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class EditableModelComboBox(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -160,7 +165,7 @@ class SettingsPage(QWidget):
         mail_layout.addWidget(mail_title)
 
         self.mail_host_input = QLineEdit()
-        self.mail_port_input = QSpinBox()
+        self.mail_port_input = NoWheelSpinBox()
         self.mail_port_input.setRange(1, 65535)
         self.mail_port_input.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.mail_username_input = QLineEdit()
@@ -262,7 +267,7 @@ class SettingsPage(QWidget):
         self.llm_token_input.setEchoMode(QLineEdit.Password)
         self.llm_token_input.setPlaceholderText("留空则不修改已保存 Token")
 
-        self.llm_timeout_input = QSpinBox()
+        self.llm_timeout_input = NoWheelSpinBox()
         self.llm_timeout_input.setRange(5, 600)
         self.llm_timeout_input.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.llm_timeout_input.setSuffix(" 秒")
@@ -283,11 +288,6 @@ class SettingsPage(QWidget):
 
         actions = QHBoxLayout()
         actions.addStretch(1)
-
-        reload_btn = QPushButton("重新载入")
-        reload_btn.setObjectName("SecondaryButton")
-        reload_btn.clicked.connect(self.reload)
-        actions.addWidget(reload_btn)
 
         save_btn = QPushButton("保存设置")
         save_btn.setObjectName("PrimaryButton")
