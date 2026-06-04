@@ -7,13 +7,18 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QFrame,
     QVBoxLayout as InnerLayout,
 )
 
-from app.todo_manager import load_normalized_todos
+from app.todo_manager import (
+    clear_all_completed_todos,
+    complete_all_todos,
+    load_normalized_todos,
+)
 from client.widgets.todo_card import TodoCard
 
 
@@ -36,9 +41,28 @@ class TodoPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(14)
 
+        title_row = QHBoxLayout()
         title = QLabel(self.title_text)
         title.setObjectName("SectionTitle")
-        root.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch(1)
+
+        if self.mode in ("email", "manual"):
+            self.complete_all_btn = QPushButton("一键全部完成")
+            self.complete_all_btn.setObjectName("PrimaryButton")
+            self.complete_all_btn.clicked.connect(self._complete_all)
+            title_row.addWidget(self.complete_all_btn)
+        elif self.mode == "done":
+            self.clear_all_btn = QPushButton("一键清除全部")
+            self.clear_all_btn.setObjectName("PrimaryButton")
+            self.clear_all_btn.setStyleSheet(
+                "QPushButton#PrimaryButton { background: #dc2626; } "
+                "QPushButton#PrimaryButton:hover { background: #b91c1c; }"
+            )
+            self.clear_all_btn.clicked.connect(self._clear_all_completed)
+            title_row.addWidget(self.clear_all_btn)
+
+        root.addLayout(title_row)
 
         if self.mode == "done":
             search_panel = QFrame()
@@ -169,6 +193,43 @@ class TodoPage(QWidget):
 
         QTimer.singleShot(80, do_focus)
         return True
+
+    def _complete_all(self):
+        label = {"email": "邮件待办", "manual": "人工待办"}.get(self.mode, "")
+        confirm = QMessageBox.question(
+            self,
+            "确认操作",
+            f"确定将所有{label}标记为完成吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            count = complete_all_todos(source_type=self.mode)
+            QMessageBox.information(self, "操作完成", f"已完成 {count} 条待办。")
+            self.reload()
+        except Exception as exc:
+            QMessageBox.critical(self, "操作失败", str(exc))
+
+    def _clear_all_completed(self):
+        confirm = QMessageBox.question(
+            self,
+            "确认操作",
+            "确定永久清除所有已完成待办吗？\n附件也会一并删除，此操作不可撤销。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            count = clear_all_completed_todos()
+            QMessageBox.information(self, "操作完成", f"已清除 {count} 条已完成待办。")
+            self.reload()
+        except Exception as exc:
+            QMessageBox.critical(self, "操作失败", str(exc))
 
     def _clear_search(self):
         self.search_keyword.clear()

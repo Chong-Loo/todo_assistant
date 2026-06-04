@@ -232,6 +232,39 @@ def update_todo_fields(todo_id: str, **fields: Any) -> dict[str, Any]:
     return todo
 
 
+def complete_all_todos(statuses: tuple[str, ...]) -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM todos WHERE status IN ({})".format(
+                ", ".join("?" for _ in statuses)
+            ),
+            statuses,
+        ).fetchall()
+
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "UPDATE todos SET status = 'done', completed_at = ?, updated_at = ? WHERE status IN ({})".format(
+                ", ".join("?" for _ in statuses)
+            ),
+            (now, now) + statuses,
+        )
+        conn.commit()
+
+    return [_row_to_dict(row) for row in rows]
+
+
+def delete_all_done() -> list[dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM todos WHERE status = 'done'"
+        ).fetchall()
+
+        conn.execute("DELETE FROM todos WHERE status = 'done'")
+        conn.commit()
+
+    return [_row_to_dict(row) for row in rows]
+
+
 def delete_todo(todo_id: str) -> bool:
     with get_connection() as conn:
         cursor = conn.execute(

@@ -237,7 +237,7 @@ def sort_by_priority(items, priority_key="priority"):
     )
 
 
-def extract_todos_from_emails(emails):
+def extract_todos_from_emails(emails, on_progress=None, stop_check=None):
     if not emails:
         return {
             "summary": "本时间段内没有读取到邮件。",
@@ -253,10 +253,16 @@ def extract_todos_from_emails(emails):
     total = len(emails)
 
     for index, mail in enumerate(emails, start=1):
+        if stop_check and stop_check():
+            break
+
         uid = mail.get("uid", "")
         subject = mail.get("subject", "")
 
         print(f"[{index}/{total}] 正在分析邮件 UID={uid} 主题={subject}")
+
+        if on_progress:
+            on_progress(index, total)
 
         try:
             result = extract_todos_from_single_email(mail)
@@ -281,19 +287,28 @@ def extract_todos_from_emails(emails):
                 "body": mail.get("body", "")
             })
 
+    cancelled = stop_check and stop_check()
+
     deduped_todos = deduplicate_todos(all_todos)
     sorted_todos = sort_by_priority(deduped_todos, priority_key="priority")
     sorted_mail_summaries = sort_by_priority(mail_summaries, priority_key="importance")
 
-    summary = (
-        f"本时间段共读取 {total} 封邮件，"
-        f"生成 {len(sorted_todos)} 个待办。"
-    )
+    if cancelled:
+        summary = (
+            f"分析已取消，已处理 {len(mail_summaries)}/{total} 封邮件，"
+            f"生成 {len(sorted_todos)} 个待办。"
+        )
+    else:
+        summary = (
+            f"本时间段共读取 {total} 封邮件，"
+            f"生成 {len(sorted_todos)} 个待办。"
+        )
 
     return {
         "summary": summary,
         "mail_count": total,
         "todo_count": len(sorted_todos),
         "mail_summaries": sorted_mail_summaries,
-        "todos": sorted_todos
+        "todos": sorted_todos,
+        "cancelled": cancelled,
     }

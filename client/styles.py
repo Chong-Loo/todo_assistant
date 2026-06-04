@@ -263,4 +263,20 @@ QTextBrowser {
     border-radius: 12px;
     padding: 12px;
 }
+
+QProgressBar {
+    background: #e2e8f0;
+    border-radius: 14px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    color: #1e293b;
+    border: none;
+}
+
+QProgressBar::chunk {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #3b82f6, stop:1 #2563eb);
+    border-radius: 14px;
+}
 """

@@ -626,6 +626,43 @@ def delete_todo_attachment(todo_id, attachment_path):
     return True
 
 
+def complete_all_todos(source_type: str | None = None) -> int:
+    init_db()
+    if source_type == "manual":
+        todos = todo_repo.list_todos()
+        target_ids = [
+            t["id"] for t in todos
+            if t["status"] in ("open", "snoozed") and t.get("is_manual")
+        ]
+    elif source_type == "email":
+        todos = todo_repo.list_todos()
+        target_ids = [
+            t["id"] for t in todos
+            if t["status"] in ("open", "snoozed") and not t.get("is_manual")
+        ]
+    else:
+        done_list = todo_repo.complete_all_todos(("open", "snoozed"))
+        target_ids = [t["id"] for t in done_list]
+
+    now = now_str()
+    count = 0
+    for tid in target_ids:
+        todo_repo.update_todo_fields(tid, status="done", completed_at=now, updated_at=now)
+        count += 1
+
+    cleanup_completed_todos(keep_days=3, keep_count=30)
+    return count
+
+
+def clear_all_completed_todos() -> int:
+    init_db()
+    done_list = todo_repo.delete_all_done()
+    count = len(done_list)
+    for todo in done_list:
+        delete_attachment_directory(str(todo["id"]))
+    return count
+
+
 def delete_todo(todo_id):
     current = get_todo(todo_id)
 

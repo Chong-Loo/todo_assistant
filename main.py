@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.mail_reader import fetch_new_emails, fetch_today_emails
-from app.email_tracker import record_fetched_emails
+from app.email_tracker import get_fetched_uids, record_fetched_emails
 from app.settings import load_config
 from app.todo_extractor import extract_todos_from_emails
 from app.storage import (
@@ -17,7 +17,7 @@ from app.logger import setup_logger
 logger = setup_logger()
 
 
-def run_daily_job(lookback_days=None):
+def run_daily_job(lookback_days=None, on_progress=None, stop_check=None):
     today = date.today()
 
     logger.info("开始读取邮件")
@@ -30,16 +30,21 @@ def run_daily_job(lookback_days=None):
         mode = "lookback"
         config = load_config()
         mail_cfg = config.get("mail", {})
-        record_fetched_emails(
-            emails,
-            username=str(mail_cfg.get("username", "")),
-            mailbox=str(mail_cfg.get("folder", "INBOX")),
-        )
+        username = str(mail_cfg.get("username", ""))
+        mailbox = str(mail_cfg.get("folder", "INBOX"))
+
+        existing_uids = get_fetched_uids(username, mailbox)
+        if existing_uids:
+            before = len(emails)
+            emails = [m for m in emails if int(m.get("uid", 0)) not in existing_uids]
+            logger.info(f"按天模式过滤已处理邮件: {before} -> {len(emails)}")
+
+        record_fetched_emails(emails, username=username, mailbox=mailbox)
 
     logger.info(f"读取邮件完成（模式={mode}），数量: {len(emails)}")
 
     logger.info("开始分析邮件")
-    report = extract_todos_from_emails(emails)
+    report = extract_todos_from_emails(emails, on_progress=on_progress, stop_check=stop_check)
 
     new_todos = report.get("todos", [])
     logger.info(f"邮件分析完成，新增待办数量: {len(new_todos)}")
@@ -64,7 +69,8 @@ def run_daily_job(lookback_days=None):
     save_daily_report(today, report)
     save_active_todos(merged_todos)
 
-    notify_daily_summary(report, active_todos_for_push)
+    if not report.get("cancelled"):
+        notify_daily_summary(report, active_todos_for_push)
 
     logger.info("任务执行完成")
     logger.info("\n" + push_text)

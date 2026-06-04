@@ -2,6 +2,7 @@ from __future__ import annotations
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QMainWindow,
+    QProgressBar,
     QWidget,
     QHBoxLayout,
     QVBoxLayout,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 
+from app.email_tracker import clear_tracking
 from app.todo_manager import load_normalized_todos
 from client.pages.dashboard_page import DashboardPage
 from client.pages.settings_page import SettingsPage
@@ -139,6 +141,27 @@ class MainWindow(QMainWindow):
         refresh_button.clicked.connect(self._refresh_all)
         header_layout.addWidget(refresh_button)
 
+        reset_tracking_btn = QPushButton("清空拉取记录")
+        reset_tracking_btn.setObjectName("SecondaryButton")
+        reset_tracking_btn.clicked.connect(self._reset_email_tracking)
+        header_layout.addWidget(reset_tracking_btn)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("ProgressBar")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFixedWidth(200)
+        self.progress_bar.setFixedHeight(28)
+        self.progress_bar.hide()
+        header_layout.addWidget(self.progress_bar)
+
+        self.cancel_button = QPushButton("取消分析")
+        self.cancel_button.setObjectName("SecondaryButton")
+        self.cancel_button.clicked.connect(self._cancel_analysis)
+        self.cancel_button.hide()
+        header_layout.addWidget(self.cancel_button)
+
         body_layout.addWidget(self.header)
 
         self.stack = QStackedWidget()
@@ -175,10 +198,27 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("数据已刷新", 3000)
 
     def _open_manual_dialog(self):
-        dialog = ManualTodoDialog(self)
+        dialog = ManualTodoDialog(parent=self)
         if dialog.exec():
             self._refresh_all()
             self.statusBar().showMessage("人工待办已保存", 4000)
+
+    def _reset_email_tracking(self):
+        confirm = QMessageBox.question(
+            self,
+            "确认操作",
+            "清空邮件拉取记录后，下次分析会重新拉取所有邮件。\n确定继续吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            clear_tracking()
+            QMessageBox.information(self, "操作完成", "邮件拉取记录已清空，下次分析将重新拉取所有邮件。")
+        except Exception as exc:
+            QMessageBox.critical(self, "操作失败", str(exc))
 
     def _on_lookback_mode_changed(self):
         mode = self.lookback_combo.currentData()
@@ -192,22 +232,52 @@ class MainWindow(QMainWindow):
         lookback_days = self.lookback_spinbox.value() if mode == -1 else 0
         self.analyze_button.setEnabled(False)
         self.statusBar().showMessage("正在执行邮件分析...")
+        self.progress_bar.setValue(0)
+        self.progress_bar.show()
+        self.cancel_button.show()
 
         self.worker_thread = DailyJobThread(lookback_days=lookback_days, parent=self)
         self.worker_thread.started_message.connect(self.statusBar().showMessage)
+        self.worker_thread.progress.connect(self._on_analysis_progress)
         self.worker_thread.success.connect(self._on_job_success)
+        self.worker_thread.cancelled.connect(self._on_job_cancelled)
         self.worker_thread.failed.connect(self._on_job_failed)
-        self.worker_thread.finished.connect(lambda: self.analyze_button.setEnabled(True))
+        self.worker_thread.finished.connect(self._on_analysis_finished)
         self.worker_thread.start()
+
+    def _cancel_analysis(self):
+        if self.worker_thread and self.worker_thread.isRunning():
+            self.worker_thread.request_stop()
+            self.cancel_button.setEnabled(False)
+            self.cancel_button.setText("正在取消...")
+            self.statusBar().showMessage("正在取消分析，请等待当前邮件分析完成...")
+
+    def _on_analysis_progress(self, current: int, total: int):
+        self.progress_bar.setMaximum(total)
+        self.progress_bar.setValue(current)
+        self.progress_bar.setFormat(f"正在分析 %v/%m 封邮件")
+        self.statusBar().showMessage(f"正在分析第 {current}/{total} 封邮件...")
 
     def _on_job_success(self, message: str):
         self._refresh_all()
         self.statusBar().showMessage(message, 6000)
         QMessageBox.information(self, "分析完成", message)
 
+    def _on_job_cancelled(self, message: str):
+        self._refresh_all()
+        self.statusBar().showMessage(message, 6000)
+        QMessageBox.information(self, "分析已取消", message)
+
     def _on_job_failed(self, message: str):
         self.statusBar().showMessage("邮件分析失败", 6000)
         QMessageBox.critical(self, "邮件分析失败", message)
+
+    def _on_analysis_finished(self):
+        self.analyze_button.setEnabled(True)
+        self.progress_bar.hide()
+        self.cancel_button.hide()
+        self.cancel_button.setEnabled(True)
+        self.cancel_button.setText("取消分析")
 
     def _jump_to_todo(self, todo_id: str):
         todos = load_normalized_todos(cleanup=True)
