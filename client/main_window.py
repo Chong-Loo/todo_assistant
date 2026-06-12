@@ -1,22 +1,26 @@
 from __future__ import annotations
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTime, QTimer
 from PySide6.QtWidgets import (
     QMainWindow,
+    QMenu,
     QProgressBar,
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QLabel,
     QPushButton,
-    QFrame,
-    QButtonGroup,
-    QStackedWidget,
-    QMessageBox,
-    QSpinBox,
     QSizePolicy,
+    QSpinBox,
+    QStackedWidget,
+    QSystemTrayIcon,
+    QWidget,
+    QButtonGroup,
+    QCheckBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QVBoxLayout,
 )
 
 from app.email_tracker import clear_tracking
+from app.settings import load_config, update_user_config
 from app.todo_manager import load_normalized_todos
 from client.pages.dashboard_page import DashboardPage
 from client.pages.settings_page import SettingsPage
@@ -35,6 +39,8 @@ class MainWindow(QMainWindow):
         self.worker_thread: DailyJobThread | None = None
 
         self._build_ui()
+        self._setup_tray()
+        self._update_welcome()
         self._refresh_all()
 
     def _build_ui(self):
@@ -58,9 +64,10 @@ class MainWindow(QMainWindow):
         title.setObjectName("SidebarTitle")
         sidebar_layout.addWidget(title)
 
-        hint = QLabel("桌面客户端 MVP")
-        hint.setObjectName("SidebarHint")
-        sidebar_layout.addWidget(hint)
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setObjectName("SidebarSep")
+        sidebar_layout.addWidget(sep)
 
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
@@ -103,15 +110,9 @@ class MainWindow(QMainWindow):
         header_layout.setContentsMargins(22, 18, 22, 18)
         header_layout.setSpacing(16)
 
-        header_text = QVBoxLayout()
-        header_title = QLabel("智能待办助手")
-        header_title.setObjectName("HeaderTitle")
-        header_text.addWidget(header_title)
-
-        header_subtitle = QLabel("读取 SQLite 待办、查看邮件正文，并支持手动触发邮件分析。")
-        header_subtitle.setObjectName("HeaderSubtitle")
-        header_text.addWidget(header_subtitle)
-        header_layout.addLayout(header_text, 1)
+        self.header_welcome = QLabel()
+        self.header_welcome.setObjectName("HeaderWelcome")
+        header_layout.addWidget(self.header_welcome, 1)
 
         self.lookback_combo = PaintedComboBox()
         self.lookback_combo.addItem("最新邮件（增量）", 0)
@@ -136,16 +137,6 @@ class MainWindow(QMainWindow):
         self.analyze_button.clicked.connect(self._run_daily_job)
         header_layout.addWidget(self.analyze_button)
 
-        refresh_button = QPushButton("刷新数据")
-        refresh_button.setObjectName("SecondaryButton")
-        refresh_button.clicked.connect(self._refresh_all)
-        header_layout.addWidget(refresh_button)
-
-        reset_tracking_btn = QPushButton("清空拉取记录")
-        reset_tracking_btn.setObjectName("SecondaryButton")
-        reset_tracking_btn.clicked.connect(self._reset_email_tracking)
-        header_layout.addWidget(reset_tracking_btn)
-
         self.progress_bar = QProgressBar()
         self.progress_bar.setObjectName("ProgressBar")
         self.progress_bar.setRange(0, 100)
@@ -161,6 +152,16 @@ class MainWindow(QMainWindow):
         self.cancel_button.clicked.connect(self._cancel_analysis)
         self.cancel_button.hide()
         header_layout.addWidget(self.cancel_button)
+
+        reset_tracking_btn = QPushButton("清空拉取记录")
+        reset_tracking_btn.setObjectName("SecondaryButton")
+        reset_tracking_btn.clicked.connect(self._reset_email_tracking)
+        header_layout.addWidget(reset_tracking_btn)
+
+        refresh_button = QPushButton("刷新数据")
+        refresh_button.setObjectName("SecondaryButton")
+        refresh_button.clicked.connect(self._refresh_all)
+        header_layout.addWidget(refresh_button)
 
         body_layout.addWidget(self.header)
 
@@ -185,9 +186,139 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage("就绪")
 
+    def _setup_tray(self):
+        self.tray = QSystemTrayIcon(self)
+        self.tray.setIcon(self.windowIcon())
+        self.tray.setToolTip("智能待办助手")
+
+        tray_menu = QMenu(self)
+        show_action = tray_menu.addAction("显示主窗口")
+        show_action.triggered.connect(self._tray_show)
+        tray_menu.addSeparator()
+        quit_action = tray_menu.addAction("退出")
+        quit_action.triggered.connect(self._tray_quit)
+        self.tray.setContextMenu(tray_menu)
+        self.tray.activated.connect(self._tray_activated)
+        self.tray.show()
+
+    def _tray_show(self):
+        self.show()
+        self.activateWindow()
+
+    def _tray_quit(self):
+        self.tray.hide()
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance().quit()
+
+    def _tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.DoubleClick, QSystemTrayIcon.Trigger):
+            self._tray_show()
+
+    def _compute_welcome_text(self):
+        from app.todo_status import is_todo_overdue
+        todos = load_normalized_todos(cleanup=False)
+        active = [t for t in todos if t.get("status", "open") in {"open", "snoozed"}]
+
+        overdue = [t for t in active if is_todo_overdue(t)]
+        urgent = [t for t in active if t.get("priority") == "urgent" and not is_todo_overdue(t)]
+        high = [t for t in active if t.get("priority") == "high" and not is_todo_overdue(t)]
+
+        hour = QTime.currentTime().hour()
+        if 6 <= hour < 11:
+            time_greeting = "☀️ 早上好！"
+        elif 11 <= hour < 14:
+            time_greeting = "🌞 午安！"
+        elif 14 <= hour < 18:
+            time_greeting = "☀️ 下午好！"
+        elif 18 <= hour < 23:
+            time_greeting = "🌇 傍晚好！"
+        else:
+            time_greeting = "🌙 夜深了..."
+
+        count = len(active)
+
+        if overdue:
+            text = f"{time_greeting}您有 {len(overdue)} 条已逾期待办"
+        elif urgent:
+            text = f"{time_greeting}您有 {len(urgent)} 条紧急待办"
+        elif high:
+            text = f"{time_greeting}您有 {len(high)} 条高优先级待办"
+        elif count > 0:
+            text = f"{time_greeting}{count} 件事待处理"
+        else:
+            text = f"{time_greeting}今天状态不错！"
+
+        return text
+
+    def _update_welcome(self):
+        text = self._compute_welcome_text()
+        self.header_welcome.setText(text)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._update_welcome()
+
+    def closeEvent(self, event):
+        config = load_config()
+        app_conf = config.get("app", {})
+        confirm_close = app_conf.get("confirm_close", True)
+        close_action = app_conf.get("close_action", "minimize")
+
+        if not confirm_close:
+            if close_action == "minimize":
+                event.ignore()
+                self.hide()
+                self.tray.showMessage("智能待办助手", "已最小化到后台运行",
+                                      QSystemTrayIcon.Information, 2000)
+            else:
+                event.accept()
+                self.tray.hide()
+                from PySide6.QtWidgets import QApplication
+                QApplication.instance().quit()
+            return
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("确认退出")
+        msg.setText("如何处理智能待办助手？")
+        msg.setIcon(QMessageBox.Question)
+
+        dont_ask = QCheckBox("不再询问")
+        msg.setCheckBox(dont_ask)
+
+        minimize_btn = msg.addButton("最小化到后台", QMessageBox.AcceptRole)
+        quit_btn = msg.addButton("退出程序", QMessageBox.DestructiveRole)
+        cancel_btn = msg.addButton("取消", QMessageBox.RejectRole)
+        msg.setDefaultButton(minimize_btn)
+
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        dont_ask_flag = dont_ask.isChecked()
+
+        if clicked == cancel_btn:
+            event.ignore()
+            return
+
+        if clicked == minimize_btn:
+            if dont_ask_flag:
+                update_user_config("app", {"confirm_close": False, "close_action": "minimize"})
+            event.ignore()
+            self.hide()
+            self.tray.showMessage("智能待办助手", "已最小化到后台运行",
+                                  QSystemTrayIcon.Information, 2000)
+        elif clicked == quit_btn:
+            if dont_ask_flag:
+                update_user_config("app", {"confirm_close": False, "close_action": "quit"})
+            event.accept()
+            self.tray.hide()
+            from PySide6.QtWidgets import QApplication
+            QApplication.instance().quit()
+
     def _switch_page(self, index: int):
         self.stack.setCurrentIndex(index)
         self.header.setVisible(index == 0)
+        if index == 0:
+            self._update_welcome()
 
     def _refresh_all(self):
         self.dashboard_page.reload()
@@ -195,6 +326,7 @@ class MainWindow(QMainWindow):
         self.manual_page.reload()
         self.done_page.reload()
         self.settings_page.reload()
+        self._update_welcome()
         self.statusBar().showMessage("数据已刷新", 3000)
 
     def _open_manual_dialog(self):

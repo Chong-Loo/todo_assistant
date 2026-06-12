@@ -31,6 +31,13 @@ QWidget {
     padding-bottom: 10px;
 }
 
+#SidebarSep {
+    background: #dbe3ec;
+    border: none;
+    height: 1px;
+    margin: 4px 0 10px 0;
+}
+
 QPushButton#NavButton {
     background: transparent;
     border: 1px solid transparent;
@@ -57,10 +64,10 @@ QPushButton#NavButton:checked {
     border-radius: 18px;
 }
 
-#HeaderTitle {
-    font-size: 28px;
-    font-weight: 900;
-    color: #111827;
+#HeaderWelcome {
+    font-size: 18px;
+    font-weight: 700;
+    color: #000000;
 }
 
 #HeaderSubtitle {

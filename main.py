@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.mail_reader import fetch_new_emails, fetch_today_emails
-from app.email_tracker import get_fetched_uids, record_fetched_emails
+from app.email_tracker import record_fetched_emails
 from app.settings import load_config
 from app.todo_extractor import extract_todos_from_emails
 from app.storage import (
@@ -30,16 +30,11 @@ def run_daily_job(lookback_days=None, on_progress=None, stop_check=None):
         mode = "lookback"
         config = load_config()
         mail_cfg = config.get("mail", {})
-        username = str(mail_cfg.get("username", ""))
-        mailbox = str(mail_cfg.get("folder", "INBOX"))
-
-        existing_uids = get_fetched_uids(username, mailbox)
-        if existing_uids:
-            before = len(emails)
-            emails = [m for m in emails if int(m.get("uid", 0)) not in existing_uids]
-            logger.info(f"按天模式过滤已处理邮件: {before} -> {len(emails)}")
-
-        record_fetched_emails(emails, username=username, mailbox=mailbox)
+        record_fetched_emails(
+            emails,
+            username=str(mail_cfg.get("username", "")),
+            mailbox=str(mail_cfg.get("folder", "INBOX")),
+        )
 
     logger.info(f"读取邮件完成（模式={mode}），数量: {len(emails)}")
 

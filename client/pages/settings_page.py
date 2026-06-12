@@ -286,6 +286,21 @@ class SettingsPage(QWidget):
         llm_layout.addWidget(self._form_row("超时时间", self.llm_timeout_input))
         root.addWidget(llm_panel)
 
+        app_panel = QFrame()
+        app_panel.setObjectName("PanelCard")
+        app_layout = QVBoxLayout(app_panel)
+        app_layout.setContentsMargins(20, 18, 20, 18)
+        app_layout.setSpacing(10)
+
+        app_title = QLabel("应用设置")
+        app_title.setObjectName("SectionTitle")
+        app_layout.addWidget(app_title)
+
+        self.confirm_close_check = QCheckBox("关闭时询问（最小化或退出）")
+
+        app_layout.addWidget(self._form_row("", self.confirm_close_check, compact=True))
+        root.addWidget(app_panel)
+
         actions = QHBoxLayout()
         actions.addStretch(1)
 
@@ -362,6 +377,9 @@ class SettingsPage(QWidget):
         else:
             self.llm_token_input.setPlaceholderText("请输入大模型 Token")
 
+        app_cfg = config.get("app", {})
+        self.confirm_close_check.setChecked(bool(app_cfg.get("confirm_close", True)))
+
     def _reload_llm_profiles(self, llm_cfg: dict):
         self.llm_profile_combo.blockSignals(True)
 
@@ -429,6 +447,11 @@ class SettingsPage(QWidget):
                 timeout=self.llm_timeout_input.value(),
                 token=llm_token or None,
             )
+
+            update_user_config("app", {
+                "confirm_close": self.confirm_close_check.isChecked(),
+                "close_action": "minimize",
+            })
 
             QMessageBox.information(self, "保存成功", "设置已保存。")
             self.reload()

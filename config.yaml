@@ -19,3 +19,7 @@ task:
 security:
   enable_desensitize: true
   save_raw_email: false
+
+app:
+  confirm_close: true
+  close_action: minimize

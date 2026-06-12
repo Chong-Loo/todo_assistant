@@ -30,3 +30,4 @@ Thumbs.db        # Windows
 # 其他不需要的文件
 ui/
 README_lc.md
+data/

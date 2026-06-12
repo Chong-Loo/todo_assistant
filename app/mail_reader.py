@@ -165,6 +165,18 @@ def fetch_today_emails(lookback_days=None, max_email_bytes=None):
         if not messages:
             return []
 
+        existing_uids = get_fetched_uids(username, mail_cfg.get("folder", "INBOX"))
+        new_messages = [uid for uid in messages if int(uid) not in existing_uids]
+
+        print(f"已拉取 UID 数量: {len(existing_uids)}")
+        print(f"新增未拉取 UID 数量: {len(new_messages)}")
+
+        if not new_messages:
+            print("没有新邮件需要拉取")
+            return []
+
+        messages = new_messages
+
         # 第一阶段：只拉 Header，不拉正文、不拉附件
         t1 = time.time()
 
