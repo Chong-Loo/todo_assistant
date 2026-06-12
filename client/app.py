@@ -2,15 +2,47 @@ import sys
 import os
 from pathlib import Path
 
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QIcon, QPalette
 from PySide6.QtWidgets import QApplication
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from app.db import init_db
+from app.settings import load_config
 from client.main_window import MainWindow
-from client.styles import APP_STYLESHEET
+from client.styles import set_app_stylesheet
+
+
+def _get_system_theme() -> str:
+    app = QApplication.instance()
+    try:
+        is_dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
+        return "dark" if is_dark else "light"
+    except AttributeError:
+        palette = app.palette()
+        c = palette.color(QPalette.Window)
+        luminance = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+        return "dark" if luminance < 128 else "light"
+
+
+def _load_and_apply_theme():
+    config = load_config()
+    theme = config.get("app", {}).get("appearance", {}).get("theme", "system")
+    if theme == "system":
+        is_dark = _get_system_theme() == "dark"
+    else:
+        is_dark = theme == "dark"
+    set_app_stylesheet(is_dark)
+
+
+def _on_palette_changed():
+    config = load_config()
+    theme = config.get("app", {}).get("appearance", {}).get("theme", "system")
+    if theme == "system":
+        is_dark = _get_system_theme() == "dark"
+        set_app_stylesheet(is_dark)
 
 
 def _resolve_icon_path() -> Path:
@@ -49,7 +81,8 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("智能待办助手")
 
-    # set application icon (so it's visible on taskbar)
+    app.paletteChanged.connect(_on_palette_changed)
+
     icon_path = _resolve_icon_path()
     if icon_path and icon_path.exists():
         try:
@@ -60,10 +93,9 @@ def main():
     app_font = QFont("Microsoft YaHei", 10)
     app.setFont(app_font)
 
-    app.setStyleSheet(APP_STYLESHEET)
+    _load_and_apply_theme()
 
     window = MainWindow()
-    # also set window icon explicitly
     if icon_path and icon_path.exists():
         try:
             window.setWindowIcon(QIcon(str(icon_path)))

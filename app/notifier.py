@@ -29,17 +29,23 @@ def build_notification_message(report, active_todos):
 
 def notify_daily_summary(report, active_todos):
     message = build_notification_message(report, active_todos)
+
+    from app.settings import load_config
+    config = load_config()
+    notif_cfg = config.get("app", {}).get("notification", {})
+    if not notif_cfg.get("enabled", True):
+        return
+    duration = int(notif_cfg.get("duration", 10))
+
+    notify_message("智能待办助手", message, timeout=duration)
+
+
+def notify_message(title: str, message: str, timeout: int = 10):
     if notification is None:
-        # plyer 平台通知不可用（可能在打包时未包含），降级为打印日志
-        print("通知（plyer 未加载）：", message)
+        print(f"通知（plyer 未加载）：{message}")
         return
 
     try:
-        notification.notify(
-            title="智能待办助手",
-            message=message,
-            timeout=10
-        )
+        notification.notify(title=title, message=message, timeout=timeout)
     except Exception:
-        # 通知失败时不阻塞主流程
         print("通知发送失败。")

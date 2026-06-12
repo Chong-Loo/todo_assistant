@@ -26,12 +26,13 @@ PRIORITY_LABELS = {
     "low": "低优先级",
 }
 
-PRIORITY_STYLES = {
-    "urgent": ("#fee2e2", "#b91c1c", "#fecaca"),
-    "high": ("#ffedd5", "#c2410c", "#fed7aa"),
-    "normal": ("#dbeafe", "#1d4ed8", "#bfdbfe"),
-    "low": ("#dcfce7", "#15803d", "#bbf7d0"),
+PRIORITY_OBJECTS = {
+    "urgent": "BadgeUrgent",
+    "high": "BadgeHigh",
+    "normal": "BadgeNormal",
+    "low": "BadgeLow",
 }
+
 
 
 def _deadline_within_days(todo: dict, days: int) -> bool:
@@ -59,12 +60,11 @@ class DeadlinePopup(QDialog):
         root.setSpacing(12)
 
         title = QLabel(f"{title_text}（{len(todos)} 条）")
-        title.setStyleSheet("font-size: 18px; font-weight: 900; color: #111827;")
+        title.setObjectName("PopupTitle")
         root.addWidget(title)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; }")
 
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -84,17 +84,6 @@ class DeadlinePopup(QDialog):
         frame.setObjectName("RecentTodoCard")
         frame.setCursor(Qt.PointingHandCursor)
         frame.todo_id = str(todo.get("id", ""))
-        frame.setStyleSheet("""
-            QFrame#RecentTodoCard {
-                background: #ffffff;
-                border: 1px solid #e5eaf1;
-                border-radius: 14px;
-            }
-            QFrame#RecentTodoCard:hover {
-                background: #fbfdff;
-                border: 1px solid #bfdbfe;
-            }
-        """)
 
         row = QHBoxLayout(frame)
         row.setContentsMargins(14, 12, 14, 12)
@@ -104,25 +93,21 @@ class DeadlinePopup(QDialog):
         text_col.setSpacing(4)
 
         title = QLabel(str(todo.get("title") or "未命名"))
-        title.setStyleSheet("font-size: 14px; font-weight: 800; color: #111827;")
+        title.setObjectName("RecentTodoTitle")
         title.setWordWrap(True)
         text_col.addWidget(title)
 
         deadline = todo.get("deadline") or "无截止"
         meta = QLabel(f"截止：{deadline}")
-        meta.setStyleSheet("font-size: 12px; color: #64748b;")
+        meta.setObjectName("RecentTodoMeta")
         text_col.addWidget(meta)
 
         row.addLayout(text_col, 1)
 
         priority = todo.get("priority", "normal")
-        bg, fg, _border = PRIORITY_STYLES.get(priority, PRIORITY_STYLES["normal"])
         badge = QLabel(PRIORITY_LABELS.get(priority, ""))
+        badge.setObjectName(PRIORITY_OBJECTS.get(priority, "BadgeNormal"))
         badge.setAlignment(Qt.AlignCenter)
-        badge.setStyleSheet(
-            f"background: {bg}; color: {fg}; border-radius: 8px; "
-            f"padding: 4px 10px; font-size: 12px; font-weight: 800;"
-        )
         row.addWidget(badge, 0, Qt.AlignVCenter)
 
         frame.mousePressEvent = lambda e, fid=frame.todo_id: (
@@ -163,26 +148,8 @@ class MetricCard(QFrame):
 class PriorityBadge(QLabel):
     def __init__(self, priority: str, parent=None):
         super().__init__(PRIORITY_LABELS.get(priority, "普通"), parent)
-
-        bg, fg, border = PRIORITY_STYLES.get(
-            priority,
-            PRIORITY_STYLES["normal"]
-        )
-
+        self.setObjectName(PRIORITY_OBJECTS.get(priority, "BadgeNormal"))
         self.setAlignment(Qt.AlignCenter)
-        self.setStyleSheet(
-            f"""
-            QLabel {{
-                background: {bg};
-                color: {fg};
-                border: 1px solid {border};
-                border-radius: 11px;
-                padding: 5px 10px;
-                font-size: 12px;
-                font-weight: 900;
-            }}
-            """
-        )
 
 
 class RecentTodoCard(QFrame):
@@ -199,42 +166,6 @@ class RecentTodoCard(QFrame):
         self._build_ui()
 
     def _build_ui(self):
-        self.setStyleSheet(
-            """
-            QFrame#RecentTodoCard {
-                background: #ffffff;
-                border: 1px solid #e5eaf1;
-                border-radius: 17px;
-            }
-
-            QFrame#RecentTodoCard:hover {
-                background: #fbfdff;
-                border: 1px solid #bfdbfe;
-            }
-
-            QLabel#RecentTodoTitle {
-                font-size: 16px;
-                font-weight: 900;
-                color: #111827;
-            }
-
-            QLabel#RecentTodoMeta {
-                font-size: 12px;
-                color: #64748b;
-            }
-
-            QLabel#RecentTodoDeadline {
-                background: #f8fafc;
-                color: #475569;
-                border: 1px solid #e2e8f0;
-                border-radius: 12px;
-                padding: 7px 10px;
-                font-size: 13px;
-                font-weight: 800;
-            }
-            """
-        )
-
         root = QHBoxLayout(self)
         root.setContentsMargins(16, 14, 16, 14)
         root.setSpacing(14)
@@ -255,37 +186,12 @@ class RecentTodoCard(QFrame):
 
         if is_todo_overdue(self.todo):
             overdue = QLabel("逾期")
-            overdue.setStyleSheet(
-                """
-                QLabel {
-                    background: #fee2e2;
-                    color: #991b1b;
-                    border: 1px solid #fca5a5;
-                    border-radius: 11px;
-                    padding: 5px 10px;
-                    font-size: 12px;
-                    font-weight: 900;
-                }
-                """
-            )
+            overdue.setObjectName("BadgeOverdue")
             meta_row.addWidget(overdue, 0, Qt.AlignLeft)
 
         status_text = "已暂缓" if self.todo.get("status") == "snoozed" else "未完成"
         status = QLabel(status_text)
-        status.setObjectName("RecentTodoMeta")
-        status.setStyleSheet(
-            """
-            QLabel {
-                background: #f8fafc;
-                color: #475569;
-                border: 1px solid #e2e8f0;
-                border-radius: 11px;
-                padding: 5px 10px;
-                font-size: 12px;
-                font-weight: 800;
-            }
-            """
-        )
+        status.setObjectName("BadgePending")
         meta_row.addWidget(status, 0, Qt.AlignLeft)
         meta_row.addStretch(1)
 
@@ -354,25 +260,6 @@ class DashboardPage(QWidget):
         self.sort_combo.addItem("优先级", "priority")
         self.sort_combo.addItem("创建时间", "created_at")
         self.sort_combo.addItem("邮件/人工", "source")
-        self.sort_combo.setStyleSheet("""
-            QComboBox {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
-                border-radius: 10px;
-                padding: 6px 12px;
-                font-size: 13px;
-                font-weight: 800;
-                color: #334155;
-                min-width: 100px;
-            }
-            QComboBox:hover {
-                border-color: #94a3b8;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 24px;
-            }
-        """)
         self.sort_combo.currentIndexChanged.connect(self.reload)
         recent_header.addWidget(self.sort_combo)
 
@@ -382,6 +269,7 @@ class DashboardPage(QWidget):
         self.recent_scroll.setWidgetResizable(True)
 
         self.recent_content = QWidget()
+        self.recent_content.setObjectName("PanelCard")
         self.recent_layout = QVBoxLayout(self.recent_content)
         self.recent_layout.setContentsMargins(0, 0, 0, 0)
         self.recent_layout.setSpacing(12)

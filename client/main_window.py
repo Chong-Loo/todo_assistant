@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.email_tracker import clear_tracking
+from app.notifier import notify_message
 from app.settings import load_config, update_user_config
 from app.todo_manager import load_normalized_todos
 from client.pages.dashboard_page import DashboardPage
@@ -42,6 +43,30 @@ class MainWindow(QMainWindow):
         self._setup_tray()
         self._update_welcome()
         self._refresh_all()
+
+        QTimer.singleShot(0, self._on_startup)
+
+    def _on_startup(self):
+        config = load_config()
+        app_cfg = config.get("app", {})
+
+        # startup banner
+        show_banner = app_cfg.get("notification", {}).get("show_startup_banner", True)
+        if show_banner:
+            from app.todo_status import is_todo_overdue
+            todos = load_normalized_todos(cleanup=False)
+            active = [t for t in todos if t.get("status", "open") in {"open", "snoozed"}]
+            overdue = sum(1 for t in active if is_todo_overdue(t))
+            urgent = sum(1 for t in active if t.get("priority") == "urgent")
+            high = sum(1 for t in active if t.get("priority") == "high")
+
+            msg = (
+                f"当前待办 {len(active)} 个，"
+                f"逾期 {overdue} 个，"
+                f"紧急 {urgent} 个，"
+                f"高优先级 {high} 个。"
+            )
+            notify_message("智能待办助手", msg, timeout=8)
 
     def _build_ui(self):
         app_root = QWidget()

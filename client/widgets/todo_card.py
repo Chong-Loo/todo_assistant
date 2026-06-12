@@ -82,40 +82,6 @@ class AttachmentRow(QFrame):
 
     def _build_ui(self):
         self.setObjectName("AttachmentRow")
-        self.setStyleSheet(
-            """
-            QFrame#AttachmentRow {
-                background: #ffffff;
-                border: 1px solid #e5e7eb;
-                border-radius: 12px;
-            }
-
-            QLabel#AttachmentName {
-                font-size: 13px;
-                font-weight: 800;
-                color: #111827;
-            }
-
-            QLabel#AttachmentMeta {
-                font-size: 12px;
-                color: #64748b;
-            }
-
-            QPushButton#DeleteAttachmentButton {
-                background: #ffffff;
-                border: 1px solid #fecaca;
-                color: #b91c1c;
-                border-radius: 10px;
-                padding: 7px 12px;
-                font-weight: 800;
-            }
-
-            QPushButton#DeleteAttachmentButton:hover {
-                background: #fef2f2;
-                border: 1px solid #fca5a5;
-            }
-            """
-        )
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
@@ -230,59 +196,6 @@ class StageRow(QFrame):
 
     def _build_ui(self):
         self.setObjectName("StageRow")
-        self.setStyleSheet("""
-            QFrame#StageRow {
-                background: #ffffff;
-                border: 1px solid #e5e7eb;
-                border-radius: 12px;
-            }
-            QLabel#StageTitle {
-                font-size: 13px;
-                font-weight: 800;
-                color: #111827;
-            }
-            QLabel#StageDeadline {
-                font-size: 12px;
-                color: #64748b;
-            }
-            QPushButton#StageCheck {
-                border: 2px solid #d1d5db;
-                border-radius: 4px;
-                background-color: #ffffff;
-                font-size: 16px;
-                font-weight: 900;
-                color: transparent;
-                padding: 0px;
-                min-width: 22px;
-                max-width: 22px;
-                min-height: 22px;
-                max-height: 22px;
-            }
-            QPushButton#StageCheck:checked {
-                background-color: #22c55e;
-                border: 2px solid #22c55e;
-                color: #ffffff;
-            }
-            QPushButton#StageCheck:hover {
-                border-color: #94a3b8;
-            }
-            QPushButton#StageCheck:checked:hover {
-                background-color: #16a34a;
-                border-color: #16a34a;
-            }
-            QPushButton#DeleteStageButton {
-                background: #ffffff;
-                border: 1px solid #fecaca;
-                color: #b91c1c;
-                border-radius: 10px;
-                padding: 7px 12px;
-                font-weight: 800;
-            }
-            QPushButton#DeleteStageButton:hover {
-                background: #fef2f2;
-                border: 1px solid #fca5a5;
-            }
-        """)
 
         root = QHBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
@@ -304,7 +217,9 @@ class StageRow(QFrame):
         title_label.setWordWrap(True)
 
         if self.stage.get("status") == "done":
-            title_label.setStyleSheet("QLabel#StageTitle { color: #9ca3af; text-decoration: line-through; }")
+            title_label.setProperty("done", True)
+            title_label.style().unpolish(title_label)
+            title_label.style().polish(title_label)
 
         left.addWidget(title_label)
 
@@ -374,26 +289,6 @@ class TodoCard(QFrame):
         self.deadline_button = QPushButton(self._deadline_button_text())
         self.deadline_button.setObjectName("DeadlineInlineButton")
         self.deadline_button.clicked.connect(self._edit_deadline)
-        self.deadline_button.setStyleSheet(
-            """
-            QPushButton#DeadlineInlineButton {
-                background: #f8fafc;
-                border: 1px solid #dbe3ee;
-                color: #475569;
-                border-radius: 12px;
-                padding: 7px 12px;
-                font-size: 13px;
-                font-weight: 800;
-                text-align: left;
-            }
-
-            QPushButton#DeadlineInlineButton:hover {
-                background: #eef4fb;
-                border: 1px solid #bfdbfe;
-                color: #1d4ed8;
-            }
-            """
-        )
         meta_row.addWidget(self.deadline_button, 0, Qt.AlignVCenter)
         meta_row.addStretch(1)
         root.addLayout(meta_row)
@@ -404,16 +299,6 @@ class TodoCard(QFrame):
         self.priority_btn = QPushButton(PRIORITY_LABELS.get(current_priority, current_priority))
         self.priority_btn.setObjectName(PRIORITY_OBJECTS.get(current_priority, "BadgeNormal"))
         self.priority_btn.setCursor(Qt.PointingHandCursor)
-        self.priority_btn.setStyleSheet(
-            "QPushButton#BadgeUrgent { background: #fee2e2; color: #b91c1c; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
-            "QPushButton#BadgeHigh { background: #ffedd5; color: #c2410c; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
-            "QPushButton#BadgeNormal { background: #dbeafe; color: #1d4ed8; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
-            "QPushButton#BadgeLow { background: #dcfce7; color: #15803d; border-radius: 10px; padding: 5px 10px; font-weight: 800; border: none; }"
-            "QPushButton#BadgeUrgent:hover { background: #fecaca; }"
-            "QPushButton#BadgeHigh:hover { background: #fed7aa; }"
-            "QPushButton#BadgeNormal:hover { background: #bfdbfe; }"
-            "QPushButton#BadgeLow:hover { background: #bbf7d0; }"
-        )
         self._priority_menu = QMenu(self)
         for label, value in PRIORITY_OPTIONS:
             action = self._priority_menu.addAction(label)
@@ -446,15 +331,6 @@ class TodoCard(QFrame):
         detail_label = QLabel(detail_text)
         detail_label.setObjectName("TodoReason")
         detail_label.setWordWrap(True)
-        detail_label.setStyleSheet(
-            """
-            QLabel#TodoReason {
-                font-size: 16px;
-                line-height: 1.75;
-                color: #334155;
-            }
-            """
-        )
         root.addWidget(detail_label)
 
         action_row = QHBoxLayout()
@@ -473,25 +349,6 @@ class TodoCard(QFrame):
 
             delete_btn = QPushButton("删除")
             delete_btn.setObjectName("DeleteTodoButton")
-            delete_btn.setStyleSheet(
-                """
-                QPushButton#DeleteTodoButton {
-                    background: #ffffff;
-                    border: 1px solid #fecaca;
-                    color: #b91c1c;
-                    border-radius: 14px;
-                    padding: 0px 22px;
-                    min-height: 52px;
-                    max-height: 52px;
-                    font-weight: 800;
-                }
-
-                QPushButton#DeleteTodoButton:hover {
-                    background: #fef2f2;
-                    border: 1px solid #fca5a5;
-                }
-                """
-            )
             delete_btn.clicked.connect(self._delete_todo)
             action_row.addWidget(delete_btn)
 
@@ -507,32 +364,13 @@ class TodoCard(QFrame):
             action_row.addWidget(mail_btn)
 
         self.operation_toggle = QToolButton()
+        self.operation_toggle.setObjectName("OperationToggle")
         self.operation_toggle.setAttribute(Qt.WA_OpaquePaintEvent)
         self.operation_toggle.setCheckable(True)
         self.operation_toggle.setChecked(False)
         self.operation_toggle.setArrowType(Qt.RightArrow)
         self.operation_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.operation_toggle.setText("操作")
-        self.operation_toggle.setStyleSheet(
-            """
-            QToolButton {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
-                border-radius: 14px;
-                padding: 11px 16px;
-                font-size: 15px;
-                font-weight: 900;
-                color: #334155;
-                text-align: left;
-                min-width: 92px;
-            }
-
-            QToolButton:hover {
-                background: #f8fafc;
-                border: 1px solid #94a3b8;
-            }
-            """
-        )
         self.operation_toggle.clicked.connect(self._toggle_operation_panel)
         action_row.addWidget(self.operation_toggle)
         action_row.addStretch(1)
@@ -541,46 +379,6 @@ class TodoCard(QFrame):
         self.operation_panel = QFrame()
         self.operation_panel.setObjectName("OperationPanel")
         self.operation_panel.setVisible(False)
-        self.operation_panel.setStyleSheet(
-            """
-            QFrame#OperationPanel {
-                background: #f8fafc;
-                border: 1px solid #e5e7eb;
-                border-radius: 18px;
-            }
-
-            QFrame#OperationSection {
-                background: #ffffff;
-                border: 1px solid #e5e7eb;
-                border-radius: 14px;
-            }
-
-            QLabel#OperationTitle {
-                color: #334155;
-                font-size: 14px;
-                font-weight: 900;
-            }
-
-            QLabel#OperationHint {
-                color: #64748b;
-                font-size: 13px;
-            }
-
-            QPushButton#OperationButton {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
-                color: #334155;
-                border-radius: 11px;
-                padding: 9px 14px;
-                font-weight: 800;
-            }
-
-            QPushButton#OperationButton:hover {
-                background: #f1f5f9;
-                border: 1px solid #94a3b8;
-            }
-            """
-        )
 
         operation_layout = QVBoxLayout(self.operation_panel)
         operation_layout.setContentsMargins(16, 16, 16, 16)
@@ -647,15 +445,6 @@ class TodoCard(QFrame):
 
         self._stage_edit = QLineEdit()
         self._stage_edit.setPlaceholderText("输入阶段描述...")
-        self._stage_edit.setStyleSheet("""
-            QLineEdit {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
-                border-radius: 10px;
-                padding: 8px 12px;
-                font-size: 13px;
-            }
-        """)
         self._stage_edit.returnPressed.connect(self._add_stage)
         add_row.addWidget(self._stage_edit, 1)
 
@@ -663,21 +452,6 @@ class TodoCard(QFrame):
         self._stage_deadline_btn = QPushButton("截止")
         self._stage_deadline_btn.setObjectName("OperationButton")
         self._stage_deadline_btn.clicked.connect(self._pick_stage_deadline)
-        self._stage_deadline_btn.setStyleSheet("""
-            QPushButton#OperationButton {
-                background: #ffffff;
-                border: 1px solid #cbd5e1;
-                color: #334155;
-                border-radius: 10px;
-                padding: 8px 12px;
-                font-size: 13px;
-                font-weight: 800;
-            }
-            QPushButton#OperationButton:hover {
-                background: #f1f5f9;
-                border: 1px solid #94a3b8;
-            }
-        """)
         add_row.addWidget(self._stage_deadline_btn, 0, Qt.AlignVCenter)
 
         add_stage_btn = QPushButton("添加")

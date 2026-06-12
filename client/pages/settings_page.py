@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QPalette
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QSizePolicy,
     QScrollArea,
+    QStackedWidget,
 )
 
 from app.settings import (
@@ -31,6 +33,7 @@ from app.settings import (
     save_mail_password,
     update_user_config,
 )
+from client.styles import set_app_stylesheet
 
 
 class NoWheelSpinBox(QSpinBox):
@@ -84,7 +87,15 @@ class EditableModelComboBox(QComboBox):
             """
         )
 
+    def _is_dark_mode(self):
+        app = QApplication.instance()
+        palette = app.palette()
+        c = palette.color(QPalette.Window)
+        return c.lightness() < 128
+
     def paintEvent(self, event):
+        is_dark = self._is_dark_mode()
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
@@ -92,27 +103,42 @@ class EditableModelComboBox(QComboBox):
         path = QPainterPath()
         path.addRoundedRect(rect, 10, 10)
 
-        border = QColor("#2563eb") if self.hasFocus() else QColor("#cbd5e1")
-        painter.fillPath(path, QColor("#ffffff"))
+        if is_dark:
+            bg = QColor("#1e293b")
+            border_focus = QColor("#3b82f6")
+            border_normal = QColor("#475569")
+            separator = QColor("#475569")
+            chevron = QColor("#94a3b8")
+            text = QColor("#f1f5f9") if self.isEnabled() else QColor("#64748b")
+        else:
+            bg = QColor("#ffffff")
+            border_focus = QColor("#2563eb")
+            border_normal = QColor("#cbd5e1")
+            separator = QColor("#e2e8f0")
+            chevron = QColor("#64748b")
+            text = QColor("#1f2937") if self.isEnabled() else QColor("#94a3b8")
+
+        border = border_focus if self.hasFocus() else border_normal
+        painter.fillPath(path, bg)
         painter.setPen(QPen(border, 1.2))
         painter.drawPath(path)
 
         separator_x = self.width() - 42
-        painter.setPen(QPen(QColor("#e2e8f0"), 1.0))
+        painter.setPen(QPen(separator, 1.0))
         painter.drawLine(separator_x, 8, separator_x, self.height() - 8)
 
         cx = self.width() - 21
         cy = self.height() / 2 + 1
-        chevron = QPainterPath()
-        chevron.moveTo(cx - 6, cy - 3)
-        chevron.lineTo(cx, cy + 3)
-        chevron.lineTo(cx + 6, cy - 3)
-        painter.setPen(QPen(QColor("#64748b"), 2.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        painter.drawPath(chevron)
+        chevron_path = QPainterPath()
+        chevron_path.moveTo(cx - 6, cy - 3)
+        chevron_path.lineTo(cx, cy + 3)
+        chevron_path.lineTo(cx + 6, cy - 3)
+        painter.setPen(QPen(chevron, 2.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        painter.drawPath(chevron_path)
 
         if not self.isEditable():
             text_rect = QRectF(14, 0, max(0, self.width() - 62), self.height())
-            painter.setPen(QColor("#1f2937") if self.isEnabled() else QColor("#94a3b8"))
+            painter.setPen(text)
             painter.drawText(
                 text_rect,
                 int(Qt.AlignVCenter | Qt.AlignLeft),
@@ -129,40 +155,57 @@ class SettingsPage(QWidget):
         self.reload()
 
     def _build_ui(self):
-        page_layout = QVBoxLayout(self)
-        page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        content = QWidget()
-        content.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-
-        root = QVBoxLayout(content)
+        root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(16)
+        root.setSpacing(0)
 
-        title = QLabel("设置")
-        title.setObjectName("SectionTitle")
-        root.addWidget(title)
+        # left navigation
+        nav = QFrame()
+        nav.setFixedWidth(180)
+        nav.setObjectName("SettingsNav")
+        nav_layout = QVBoxLayout(nav)
+        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav_layout.setSpacing(2)
 
-        hint = QLabel("邮箱密码和大模型 Token 将保存到系统 keyring。")
-        hint.setObjectName("SectionHint")
-        root.addWidget(hint)
+        self.nav_buttons = []
+        nav_items = ["📮 邮箱账号", "🤖 模型配置", "⚙️ 应用设置"]
+        for i, text in enumerate(nav_items):
+            btn = QPushButton(text)
+            btn.setObjectName("SettingsNavButton")
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked=False, idx=i: self._switch_nav(idx))
+            nav_layout.addWidget(btn)
+            self.nav_buttons.append(btn)
+            if i == 0:
+                btn.setChecked(True)
+
+        nav_layout.addStretch(1)
+        root.addWidget(nav)
+
+        # content stack
+        self.stack = QStackedWidget()
+        self.stack.setObjectName("SettingsStack")
+
+        # page 0 - mail
+        mail_content = QWidget()
+        mail_content.setObjectName("SettingsContent")
+        mail_scroll = QScrollArea()
+        mail_scroll.setWidgetResizable(True)
+        mail_scroll.setFrameShape(QFrame.NoFrame)
+        mail_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        mail_root = QVBoxLayout(mail_content)
+        mail_root.setContentsMargins(26, 22, 26, 22)
+        mail_root.setSpacing(16)
+
+        mail_title = QLabel("📮 邮箱账号")
+        mail_title.setObjectName("SectionTitle")
+        mail_root.addWidget(mail_title)
 
         mail_panel = QFrame()
         mail_panel.setObjectName("PanelCard")
         mail_layout = QVBoxLayout(mail_panel)
         mail_layout.setContentsMargins(20, 18, 20, 18)
         mail_layout.setSpacing(10)
-
-        mail_title = QLabel("邮箱账号")
-        mail_title.setObjectName("SectionTitle")
-        mail_layout.addWidget(mail_title)
 
         self.mail_host_input = QLineEdit()
         self.mail_port_input = NoWheelSpinBox()
@@ -190,36 +233,40 @@ class SettingsPage(QWidget):
         mail_layout.addWidget(self._form_row("邮箱密码", self.mail_password_input))
         mail_layout.addWidget(self._form_row("邮箱目录", self.mail_folder_input))
         mail_layout.addWidget(self._form_row("", self.mail_ssl_check, compact=True))
-        root.addWidget(mail_panel)
+        mail_root.addWidget(mail_panel)
+
+        mail_root.addStretch(1)
+        mail_scroll.setWidget(mail_content)
+        self.stack.addWidget(mail_scroll)
+
+        # page 1 - llm
+        llm_content = QWidget()
+        llm_content.setObjectName("SettingsContent")
+        llm_scroll = QScrollArea()
+        llm_scroll.setWidgetResizable(True)
+        llm_scroll.setFrameShape(QFrame.NoFrame)
+        llm_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        llm_root = QVBoxLayout(llm_content)
+        llm_root.setContentsMargins(26, 22, 26, 22)
+        llm_root.setSpacing(16)
+
+        llm_title = QLabel("🤖 模型配置")
+        llm_title.setObjectName("SectionTitle")
+        llm_root.addWidget(llm_title)
+
+        llm_warning = QLabel(
+            "注意：分析公司邮箱待办时一定要使用公司内网模型，"
+            "使用外网模型数据泄露后果自负！"
+        )
+        llm_warning.setObjectName("LlmWarning")
+        llm_warning.setWordWrap(True)
+        llm_root.addWidget(llm_warning)
 
         llm_panel = QFrame()
         llm_panel.setObjectName("PanelCard")
         llm_layout = QVBoxLayout(llm_panel)
         llm_layout.setContentsMargins(20, 18, 20, 18)
         llm_layout.setSpacing(10)
-
-        llm_title = QLabel("模型配置")
-        llm_title.setObjectName("SectionTitle")
-        llm_layout.addWidget(llm_title)
-
-        llm_warning = QLabel(
-            "注意：分析公司邮箱待办时一定要使用公司内网模型，"
-            "使用外网模型数据泄露后果自负！"
-        )
-        llm_warning.setWordWrap(True)
-        llm_warning.setStyleSheet(
-            """
-            QLabel {
-                background: #fef2f2;
-                color: #991b1b;
-                border: 1px solid #fecaca;
-                border-radius: 10px;
-                padding: 10px 12px;
-                font-weight: 900;
-            }
-            """
-        )
-        llm_layout.addWidget(llm_warning)
 
         self.llm_profiles: list[dict] = []
         self.llm_profile_combo = EditableModelComboBox()
@@ -229,29 +276,12 @@ class SettingsPage(QWidget):
         delete_profile_btn = QPushButton("删除")
         delete_profile_btn.setObjectName("CompactDangerButton")
         delete_profile_btn.setFixedSize(82, 42)
-        delete_profile_btn.setStyleSheet(
-            """
-            QPushButton#CompactDangerButton {
-                background: #ffffff;
-                border: 1px solid #fecaca;
-                color: #991b1b;
-                border-radius: 10px;
-                font-weight: 900;
-            }
-
-            QPushButton#CompactDangerButton:hover {
-                background: #fef2f2;
-                border: 1px solid #fca5a5;
-            }
-            """
-        )
         delete_profile_btn.clicked.connect(self._delete_llm_profile)
 
         profile_row = QWidget()
         profile_row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         profile_row.setMinimumHeight(54)
         profile_row.setMaximumHeight(54)
-
         profile_layout = QHBoxLayout(profile_row)
         profile_layout.setContentsMargins(0, 3, 0, 3)
         profile_layout.setSpacing(18)
@@ -262,11 +292,9 @@ class SettingsPage(QWidget):
 
         self.llm_endpoint_input = QLineEdit()
         self.llm_model_input = QLineEdit()
-
         self.llm_token_input = QLineEdit()
         self.llm_token_input.setEchoMode(QLineEdit.Password)
         self.llm_token_input.setPlaceholderText("留空则不修改已保存 Token")
-
         self.llm_timeout_input = NoWheelSpinBox()
         self.llm_timeout_input.setRange(5, 600)
         self.llm_timeout_input.setButtonSymbols(QAbstractSpinBox.NoButtons)
@@ -284,36 +312,152 @@ class SettingsPage(QWidget):
         llm_layout.addWidget(self._form_row("模型名称", self.llm_model_input))
         llm_layout.addWidget(self._form_row("Token", self.llm_token_input))
         llm_layout.addWidget(self._form_row("超时时间", self.llm_timeout_input))
-        root.addWidget(llm_panel)
+        llm_root.addWidget(llm_panel)
 
-        app_panel = QFrame()
-        app_panel.setObjectName("PanelCard")
-        app_layout = QVBoxLayout(app_panel)
-        app_layout.setContentsMargins(20, 18, 20, 18)
-        app_layout.setSpacing(10)
+        llm_root.addStretch(1)
+        llm_scroll.setWidget(llm_content)
+        self.stack.addWidget(llm_scroll)
 
-        app_title = QLabel("应用设置")
+        # page 2 - app settings (with subpanels)
+        app_content = QWidget()
+        app_content.setObjectName("SettingsContent")
+        app_scroll = QScrollArea()
+        app_scroll.setWidgetResizable(True)
+        app_scroll.setFrameShape(QFrame.NoFrame)
+        app_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        app_root = QVBoxLayout(app_content)
+        app_root.setContentsMargins(26, 22, 26, 22)
+        app_root.setSpacing(16)
+
+        app_title = QLabel("⚙️ 应用设置")
         app_title.setObjectName("SectionTitle")
-        app_layout.addWidget(app_title)
+        app_root.addWidget(app_title)
 
+        # -- general --
         self.confirm_close_check = QCheckBox("关闭时询问（最小化或退出）")
+        gen_sub = QFrame()
+        gen_sub.setObjectName("PanelCard")
+        gen_sub_layout = QVBoxLayout(gen_sub)
+        gen_sub_layout.setContentsMargins(20, 18, 20, 18)
+        gen_sub_layout.setSpacing(10)
+        gen_sub_title = QLabel("常规")
+        gen_sub_title.setObjectName("SubSectionTitle")
+        gen_sub_layout.addWidget(gen_sub_title)
+        gen_sub_layout.addWidget(self._form_row("", self.confirm_close_check, compact=True))
+        gen_sep = QFrame()
+        gen_sep.setFrameShape(QFrame.HLine)
+        gen_sep.setObjectName("SettingsSep")
+        gen_sub_layout.addWidget(gen_sep)
+        app_root.addWidget(gen_sub)
 
-        app_layout.addWidget(self._form_row("", self.confirm_close_check, compact=True))
-        root.addWidget(app_panel)
+        # -- appearance --
+        app_sub = QFrame()
+        app_sub.setObjectName("PanelCard")
+        app_sub_layout = QVBoxLayout(app_sub)
+        app_sub_layout.setContentsMargins(20, 18, 20, 18)
+        app_sub_layout.setSpacing(10)
 
+        app_sub_title = QLabel("外观")
+        app_sub_title.setObjectName("SubSectionTitle")
+        app_sub_layout.addWidget(app_sub_title)
+
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["跟随系统", "浅色模式", "深色模式"])
+        self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
+        app_sub_layout.addWidget(self._form_row("主题", self.theme_combo))
+        app_sep = QFrame()
+        app_sep.setFrameShape(QFrame.HLine)
+        app_sep.setObjectName("SettingsSep")
+        app_sub_layout.addWidget(app_sep)
+
+        app_root.addWidget(app_sub)
+
+        # -- notification --
+        notif_sub = QFrame()
+        notif_sub.setObjectName("PanelCard")
+        notif_layout = QVBoxLayout(notif_sub)
+        notif_layout.setContentsMargins(20, 18, 20, 18)
+        notif_layout.setSpacing(10)
+
+        notif_sub_title = QLabel("通知")
+        notif_sub_title.setObjectName("SubSectionTitle")
+        notif_layout.addWidget(notif_sub_title)
+
+        self.notify_enabled_check = QCheckBox("开启系统通知")
+        notif_layout.addWidget(self._form_row("", self.notify_enabled_check, compact=True))
+
+        self.notify_duration_spin = NoWheelSpinBox()
+        self.notify_duration_spin.setRange(3, 60)
+        self.notify_duration_spin.setSuffix(" 秒")
+        notif_layout.addWidget(self._form_row("通知显示时长", self.notify_duration_spin))
+
+        self.notify_startup_check = QCheckBox("启动时显示统计横幅")
+        notif_layout.addWidget(self._form_row("", self.notify_startup_check, compact=True))
+        notif_sep = QFrame()
+        notif_sep.setFrameShape(QFrame.HLine)
+        notif_sep.setObjectName("SettingsSep")
+        notif_layout.addWidget(notif_sep)
+
+        app_root.addWidget(notif_sub)
+
+        # -- security --
+        sec_sub = QFrame()
+        sec_sub.setObjectName("PanelCard")
+        sec_layout = QVBoxLayout(sec_sub)
+        sec_layout.setContentsMargins(20, 18, 20, 18)
+        sec_layout.setSpacing(10)
+
+        sec_sub_title = QLabel("安全")
+        sec_sub_title.setObjectName("SubSectionTitle")
+        sec_layout.addWidget(sec_sub_title)
+
+        self.desensitize_check = QCheckBox("日志数据脱敏（隐藏邮箱地址等敏感信息）")
+        sec_layout.addWidget(self._form_row("", self.desensitize_check, compact=True))
+        sec_sep = QFrame()
+        sec_sep.setFrameShape(QFrame.HLine)
+        sec_sep.setObjectName("SettingsSep")
+        sec_layout.addWidget(sec_sep)
+
+        app_root.addWidget(sec_sub)
+
+        # save button
         actions = QHBoxLayout()
         actions.addStretch(1)
-
         save_btn = QPushButton("保存设置")
         save_btn.setObjectName("PrimaryButton")
         save_btn.clicked.connect(self._save)
         actions.addWidget(save_btn)
+        app_root.addLayout(actions)
+        app_root.addStretch(1)
 
-        root.addLayout(actions)
-        root.addStretch(1)
+        app_scroll.setWidget(app_content)
+        self.stack.addWidget(app_scroll)
 
-        scroll.setWidget(content)
-        page_layout.addWidget(scroll)
+        root.addWidget(self.stack, 1)
+
+    def _switch_nav(self, index: int):
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setChecked(i == index)
+        self.stack.setCurrentIndex(index)
+
+    def _on_theme_changed(self):
+        theme_values = {0: "system", 1: "light", 2: "dark"}
+        theme = theme_values[self.theme_combo.currentIndex()]
+        if theme == "system":
+            from PySide6.QtCore import Qt
+            from PySide6.QtGui import QPalette
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            try:
+                is_dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
+            except AttributeError:
+                palette = app.palette()
+                c = palette.color(QPalette.Window)
+                luminance = 0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+                is_dark = luminance < 128
+        else:
+            is_dark = theme == "dark"
+        set_app_stylesheet(is_dark)
 
     def _form_label(self, text: str, height: int = 54) -> QLabel:
         label = QLabel(text)
@@ -379,6 +523,20 @@ class SettingsPage(QWidget):
 
         app_cfg = config.get("app", {})
         self.confirm_close_check.setChecked(bool(app_cfg.get("confirm_close", True)))
+
+        appearance_cfg = app_cfg.get("appearance", {})
+        theme_map = {"system": 0, "light": 1, "dark": 2}
+        self.theme_combo.blockSignals(True)
+        self.theme_combo.setCurrentIndex(theme_map.get(appearance_cfg.get("theme", "system"), 0))
+        self.theme_combo.blockSignals(False)
+
+        notif_cfg = app_cfg.get("notification", {})
+        self.notify_enabled_check.setChecked(bool(notif_cfg.get("enabled", True)))
+        self.notify_duration_spin.setValue(int(notif_cfg.get("duration", 10)))
+        self.notify_startup_check.setChecked(bool(notif_cfg.get("show_startup_banner", True)))
+
+        sec_cfg = config.get("security", {})
+        self.desensitize_check.setChecked(bool(sec_cfg.get("enable_desensitize", True)))
 
     def _reload_llm_profiles(self, llm_cfg: dict):
         self.llm_profile_combo.blockSignals(True)
@@ -448,9 +606,22 @@ class SettingsPage(QWidget):
                 token=llm_token or None,
             )
 
+            theme_values = {0: "system", 1: "light", 2: "dark"}
             update_user_config("app", {
                 "confirm_close": self.confirm_close_check.isChecked(),
                 "close_action": "minimize",
+                "appearance": {
+                    "theme": theme_values[self.theme_combo.currentIndex()],
+                },
+                "notification": {
+                    "enabled": self.notify_enabled_check.isChecked(),
+                    "duration": self.notify_duration_spin.value(),
+                    "show_startup_banner": self.notify_startup_check.isChecked(),
+                },
+            })
+
+            update_user_config("security", {
+                "enable_desensitize": self.desensitize_check.isChecked(),
             })
 
             QMessageBox.information(self, "保存成功", "设置已保存。")

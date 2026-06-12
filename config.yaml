@@ -23,3 +23,9 @@ security:
 app:
   confirm_close: true
   close_action: minimize
+  appearance:
+    theme: system
+  notification:
+    enabled: true
+    duration: 10
+    show_startup_banner: true
