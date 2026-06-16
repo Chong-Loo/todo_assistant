@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -23,6 +23,8 @@ from client.widgets.todo_card import TodoCard
 
 
 class TodoPage(QWidget):
+    changed = Signal()
+
     def __init__(
         self,
         title: str,
@@ -126,6 +128,7 @@ class TodoPage(QWidget):
         for todo in filtered:
             card = TodoCard(todo)
             card.changed.connect(self.reload)
+            card.changed.connect(self.changed)
             self.content_layout.addWidget(card)
             self.card_map[str(todo.get("id", ""))] = card
 

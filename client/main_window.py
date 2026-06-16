@@ -184,11 +184,6 @@ class MainWindow(QMainWindow):
         view_tracking_btn.clicked.connect(self._open_fetched_emails)
         header_layout.addWidget(view_tracking_btn)
 
-        refresh_button = QPushButton("刷新数据")
-        refresh_button.setObjectName("SecondaryButton")
-        refresh_button.clicked.connect(self._refresh_all)
-        header_layout.addWidget(refresh_button)
-
         body_layout.addWidget(self.header)
 
         self.stack = QStackedWidget()
@@ -199,6 +194,10 @@ class MainWindow(QMainWindow):
         self.manual_page = TodoPage("人工添加待办", "manual")
         self.done_page = TodoPage("已完成待办", "done")
         self.settings_page = SettingsPage()
+
+        self.email_page.changed.connect(self._refresh_all)
+        self.manual_page.changed.connect(self._refresh_all)
+        self.done_page.changed.connect(self._refresh_all)
 
         self.stack.addWidget(self.dashboard_page)
         self.stack.addWidget(self.email_page)

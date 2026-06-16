@@ -163,7 +163,7 @@ class SettingsPage(QWidget):
         nav_layout.setSpacing(2)
 
         self.nav_buttons = []
-        nav_items = ["📮 邮箱账号", "🤖 模型配置", "⚙️ 应用设置"]
+        nav_items = ["邮箱账号", "模型配置", "应用设置"]
         for i, text in enumerate(nav_items):
             btn = QPushButton(text)
             btn.setObjectName("SettingsNavButton")
@@ -192,7 +192,7 @@ class SettingsPage(QWidget):
         mail_root.setContentsMargins(26, 22, 26, 22)
         mail_root.setSpacing(16)
 
-        mail_title = QLabel("📮 邮箱账号")
+        mail_title = QLabel("邮箱账号")
         mail_title.setObjectName("SectionTitle")
         mail_root.addWidget(mail_title)
 
@@ -252,7 +252,7 @@ class SettingsPage(QWidget):
         llm_root.setContentsMargins(26, 22, 26, 22)
         llm_root.setSpacing(16)
 
-        llm_title = QLabel("🤖 模型配置")
+        llm_title = QLabel("模型配置")
         llm_title.setObjectName("SectionTitle")
         llm_root.addWidget(llm_title)
 
@@ -323,6 +323,7 @@ class SettingsPage(QWidget):
         llm_save_btn.clicked.connect(self._save_llm)
         llm_actions.addWidget(llm_save_btn)
         llm_root.addLayout(llm_actions)
+        self.llm_save_btn = llm_save_btn
         llm_root.addStretch(1)
         llm_scroll.setWidget(llm_content)
         self.stack.addWidget(llm_scroll)
@@ -338,7 +339,7 @@ class SettingsPage(QWidget):
         app_root.setContentsMargins(26, 22, 26, 22)
         app_root.setSpacing(16)
 
-        app_title = QLabel("⚙️ 应用设置")
+        app_title = QLabel("应用设置")
         app_title.setObjectName("SectionTitle")
         app_root.addWidget(app_title)
 
@@ -559,7 +560,7 @@ class SettingsPage(QWidget):
                 token_account = str(profile.get("token_account", "")).strip()
 
                 display_text = (
-                    f"默认 ({model}  |  {endpoint})"
+                    f"默认 ({model})"
                     if token_account == "__default__"
                     else f"{model}  |  {endpoint}"
                 )
@@ -659,17 +660,23 @@ class SettingsPage(QWidget):
         if not profile:
             return
 
-        self.llm_endpoint_input.setText(str(profile.get("endpoint", "")))
-        self.llm_model_input.setText(str(profile.get("model", "")))
-        self.llm_timeout_input.setValue(int(profile.get("timeout", 60) or 60))
-        self.llm_token_input.clear()
-
         if token_account == "__default__":
+            self.llm_endpoint_input.clear()
+            self.llm_model_input.clear()
+            self.llm_timeout_input.setValue(int(profile.get("timeout", 60) or 60))
+            self.llm_token_input.clear()
             self.llm_token_input.setPlaceholderText("默认配置已内置 Token，可直接使用")
-        elif get_llm_profile_token(token_account):
-            self.llm_token_input.setPlaceholderText("已保存，留空则不修改")
         else:
-            self.llm_token_input.setPlaceholderText("请输入大模型 Token")
+            self.llm_endpoint_input.setText(str(profile.get("endpoint", "")))
+            self.llm_model_input.setText(str(profile.get("model", "")))
+            self.llm_timeout_input.setValue(int(profile.get("timeout", 60) or 60))
+            self.llm_token_input.clear()
+            if get_llm_profile_token(token_account):
+                self.llm_token_input.setPlaceholderText("已保存，留空则不修改")
+            else:
+                self.llm_token_input.setPlaceholderText("请输入大模型 Token")
+
+        self.llm_save_btn.setEnabled(token_account != "__default__")
 
     def _delete_llm_profile(self):
         token_account = str(self.llm_profile_combo.currentData() or "")
