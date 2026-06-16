@@ -7,8 +7,8 @@ mail:
 
 llm:
   # 默认使用公司内网模型，打包后开箱即用
-  endpoint: http://133.66.112.53:13206/member1/qwen36-35b-prod/v1/chat/completions
-  model: qwen3.6-35b
+  endpoint: 
+  model: 
   timeout: 60
 
 task:
