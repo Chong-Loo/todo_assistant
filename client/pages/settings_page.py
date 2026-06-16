@@ -22,15 +22,21 @@ from PySide6.QtWidgets import (
 )
 
 from app.settings import (
+    clean_app_stale_keys,
     delete_llm_profile,
     get_llm_token,
     get_llm_profile_token,
     get_mail_password,
+    get_theme_preference,
     list_llm_profiles,
     load_config,
+    load_default_config,
     load_user_config,
+    resolve_default_theme,
     save_llm_profile,
     save_mail_password,
+    save_theme_preference,
+    save_user_config,
     update_user_config,
 )
 from client.styles import set_app_stylesheet
@@ -55,7 +61,6 @@ class EditableModelComboBox(QComboBox):
                 background: transparent;
                 border: none;
                 padding: 0px;
-                color: #1f2937;
             }
 
             QComboBox::drop-down {
@@ -73,16 +78,6 @@ class EditableModelComboBox(QComboBox):
                 background: transparent;
                 border: none;
                 padding: 0px 44px 0px 14px;
-                color: #1f2937;
-            }
-
-            QComboBox QAbstractItemView {
-                background: #ffffff;
-                color: #1f2937;
-                border: 1px solid #cbd5e1;
-                selection-background-color: #dbeafe;
-                selection-color: #1d4ed8;
-                outline: 0;
             }
             """
         )
@@ -235,6 +230,13 @@ class SettingsPage(QWidget):
         mail_layout.addWidget(self._form_row("", self.mail_ssl_check, compact=True))
         mail_root.addWidget(mail_panel)
 
+        mail_actions = QHBoxLayout()
+        mail_actions.addStretch(1)
+        mail_save_btn = QPushButton("保存邮箱设置")
+        mail_save_btn.setObjectName("PrimaryButton")
+        mail_save_btn.clicked.connect(self._save_mail)
+        mail_actions.addWidget(mail_save_btn)
+        mail_root.addLayout(mail_actions)
         mail_root.addStretch(1)
         mail_scroll.setWidget(mail_content)
         self.stack.addWidget(mail_scroll)
@@ -314,6 +316,13 @@ class SettingsPage(QWidget):
         llm_layout.addWidget(self._form_row("超时时间", self.llm_timeout_input))
         llm_root.addWidget(llm_panel)
 
+        llm_actions = QHBoxLayout()
+        llm_actions.addStretch(1)
+        llm_save_btn = QPushButton("保存模型设置")
+        llm_save_btn.setObjectName("PrimaryButton")
+        llm_save_btn.clicked.connect(self._save_llm)
+        llm_actions.addWidget(llm_save_btn)
+        llm_root.addLayout(llm_actions)
         llm_root.addStretch(1)
         llm_scroll.setWidget(llm_content)
         self.stack.addWidget(llm_scroll)
@@ -333,99 +342,76 @@ class SettingsPage(QWidget):
         app_title.setObjectName("SectionTitle")
         app_root.addWidget(app_title)
 
-        # -- general --
+        # -- general group --
+        gen_group_title = QLabel("常规")
+        gen_group_title.setObjectName("SettingsGroupTitle")
+        app_root.addWidget(gen_group_title)
+
         self.confirm_close_check = QCheckBox("关闭时询问（最小化或退出）")
-        gen_sub = QFrame()
-        gen_sub.setObjectName("PanelCard")
-        gen_sub_layout = QVBoxLayout(gen_sub)
-        gen_sub_layout.setContentsMargins(20, 18, 20, 18)
-        gen_sub_layout.setSpacing(10)
-        gen_sub_title = QLabel("常规")
-        gen_sub_title.setObjectName("SubSectionTitle")
-        gen_sub_layout.addWidget(gen_sub_title)
-        gen_sub_layout.addWidget(self._form_row("", self.confirm_close_check, compact=True))
-        gen_sep = QFrame()
-        gen_sep.setFrameShape(QFrame.HLine)
-        gen_sep.setObjectName("SettingsSep")
-        gen_sub_layout.addWidget(gen_sep)
-        app_root.addWidget(gen_sub)
+        gen_card = QFrame()
+        gen_card.setObjectName("PanelCard")
+        gen_layout = QVBoxLayout(gen_card)
+        gen_layout.setContentsMargins(20, 18, 20, 18)
+        gen_layout.setSpacing(10)
+        gen_layout.addWidget(self._form_row("", self.confirm_close_check, compact=True))
+        app_root.addWidget(gen_card)
 
-        # -- appearance --
-        app_sub = QFrame()
-        app_sub.setObjectName("PanelCard")
-        app_sub_layout = QVBoxLayout(app_sub)
-        app_sub_layout.setContentsMargins(20, 18, 20, 18)
-        app_sub_layout.setSpacing(10)
-
-        app_sub_title = QLabel("外观")
-        app_sub_title.setObjectName("SubSectionTitle")
-        app_sub_layout.addWidget(app_sub_title)
+        # -- appearance group --
+        app_group_title = QLabel("外观")
+        app_group_title.setObjectName("SettingsGroupTitle")
+        app_root.addWidget(app_group_title)
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["跟随系统", "浅色模式", "深色模式"])
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
-        app_sub_layout.addWidget(self._form_row("主题", self.theme_combo))
-        app_sep = QFrame()
-        app_sep.setFrameShape(QFrame.HLine)
-        app_sep.setObjectName("SettingsSep")
-        app_sub_layout.addWidget(app_sep)
+        app_card = QFrame()
+        app_card.setObjectName("PanelCard")
+        app_card_layout = QVBoxLayout(app_card)
+        app_card_layout.setContentsMargins(20, 18, 20, 18)
+        app_card_layout.setSpacing(10)
+        app_card_layout.addWidget(self._form_row("主题", self.theme_combo))
+        app_root.addWidget(app_card)
 
-        app_root.addWidget(app_sub)
-
-        # -- notification --
-        notif_sub = QFrame()
-        notif_sub.setObjectName("PanelCard")
-        notif_layout = QVBoxLayout(notif_sub)
-        notif_layout.setContentsMargins(20, 18, 20, 18)
-        notif_layout.setSpacing(10)
-
-        notif_sub_title = QLabel("通知")
-        notif_sub_title.setObjectName("SubSectionTitle")
-        notif_layout.addWidget(notif_sub_title)
+        # -- notification group --
+        notif_group_title = QLabel("通知")
+        notif_group_title.setObjectName("SettingsGroupTitle")
+        app_root.addWidget(notif_group_title)
 
         self.notify_enabled_check = QCheckBox("开启系统通知")
-        notif_layout.addWidget(self._form_row("", self.notify_enabled_check, compact=True))
-
         self.notify_duration_spin = NoWheelSpinBox()
         self.notify_duration_spin.setRange(3, 60)
         self.notify_duration_spin.setSuffix(" 秒")
-        notif_layout.addWidget(self._form_row("通知显示时长", self.notify_duration_spin))
-
         self.notify_startup_check = QCheckBox("启动时显示统计横幅")
+        notif_card = QFrame()
+        notif_card.setObjectName("PanelCard")
+        notif_layout = QVBoxLayout(notif_card)
+        notif_layout.setContentsMargins(20, 18, 20, 18)
+        notif_layout.setSpacing(10)
+        notif_layout.addWidget(self._form_row("", self.notify_enabled_check, compact=True))
+        notif_layout.addWidget(self._form_row("通知显示时长", self.notify_duration_spin))
         notif_layout.addWidget(self._form_row("", self.notify_startup_check, compact=True))
-        notif_sep = QFrame()
-        notif_sep.setFrameShape(QFrame.HLine)
-        notif_sep.setObjectName("SettingsSep")
-        notif_layout.addWidget(notif_sep)
+        app_root.addWidget(notif_card)
 
-        app_root.addWidget(notif_sub)
-
-        # -- security --
-        sec_sub = QFrame()
-        sec_sub.setObjectName("PanelCard")
-        sec_layout = QVBoxLayout(sec_sub)
-        sec_layout.setContentsMargins(20, 18, 20, 18)
-        sec_layout.setSpacing(10)
-
-        sec_sub_title = QLabel("安全")
-        sec_sub_title.setObjectName("SubSectionTitle")
-        sec_layout.addWidget(sec_sub_title)
+        # -- security group --
+        sec_group_title = QLabel("安全")
+        sec_group_title.setObjectName("SettingsGroupTitle")
+        app_root.addWidget(sec_group_title)
 
         self.desensitize_check = QCheckBox("日志数据脱敏（隐藏邮箱地址等敏感信息）")
+        sec_card = QFrame()
+        sec_card.setObjectName("PanelCard")
+        sec_layout = QVBoxLayout(sec_card)
+        sec_layout.setContentsMargins(20, 18, 20, 18)
+        sec_layout.setSpacing(10)
         sec_layout.addWidget(self._form_row("", self.desensitize_check, compact=True))
-        sec_sep = QFrame()
-        sec_sep.setFrameShape(QFrame.HLine)
-        sec_sep.setObjectName("SettingsSep")
-        sec_layout.addWidget(sec_sep)
-
-        app_root.addWidget(sec_sub)
+        app_root.addWidget(sec_card)
 
         # save button
         actions = QHBoxLayout()
         actions.addStretch(1)
         save_btn = QPushButton("保存设置")
         save_btn.setObjectName("PrimaryButton")
-        save_btn.clicked.connect(self._save)
+        save_btn.clicked.connect(self._save_app)
         actions.addWidget(save_btn)
         app_root.addLayout(actions)
         app_root.addStretch(1)
@@ -444,9 +430,6 @@ class SettingsPage(QWidget):
         theme_values = {0: "system", 1: "light", 2: "dark"}
         theme = theme_values[self.theme_combo.currentIndex()]
         if theme == "system":
-            from PySide6.QtCore import Qt
-            from PySide6.QtGui import QPalette
-            from PySide6.QtWidgets import QApplication
             app = QApplication.instance()
             try:
                 is_dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
@@ -487,10 +470,11 @@ class SettingsPage(QWidget):
         return row_widget
 
     def reload(self):
+        clean_app_stale_keys()
+
         config = load_config()
-        user_config = load_user_config()
         mail_cfg = config.get("mail", {})
-        llm_cfg = user_config.get("llm", {})
+        llm_cfg = load_user_config().get("llm", {})
         if not isinstance(llm_cfg, dict):
             llm_cfg = {}
 
@@ -521,13 +505,16 @@ class SettingsPage(QWidget):
         else:
             self.llm_token_input.setPlaceholderText("请输入大模型 Token")
 
-        app_cfg = config.get("app", {})
-        self.confirm_close_check.setChecked(bool(app_cfg.get("confirm_close", True)))
+        self.confirm_close_check.setChecked(
+            not bool(load_user_config().get("close_behavior", {}).get("dont_ask"))
+        )
 
-        appearance_cfg = app_cfg.get("appearance", {})
+        app_cfg = config.get("app", {})
+
+        effective_theme = get_theme_preference() or resolve_default_theme()
         theme_map = {"system": 0, "light": 1, "dark": 2}
         self.theme_combo.blockSignals(True)
-        self.theme_combo.setCurrentIndex(theme_map.get(appearance_cfg.get("theme", "system"), 0))
+        self.theme_combo.setCurrentIndex(theme_map.get(effective_theme, 0))
         self.theme_combo.blockSignals(False)
 
         notif_cfg = app_cfg.get("notification", {})
@@ -542,6 +529,25 @@ class SettingsPage(QWidget):
         self.llm_profile_combo.blockSignals(True)
 
         self.llm_profiles = list_llm_profiles()
+
+        # 将默认配置的模型添加到历史配置列表首位（使用纯默认配置，不受用户配置影响）
+        default_llm = load_default_config().get("llm", {})
+        if isinstance(default_llm, dict):
+            default_model = str(default_llm.get("model", "")).strip()
+            default_endpoint = str(default_llm.get("endpoint", "")).strip()
+            if default_model and default_endpoint:
+                is_duplicate = any(
+                    p.get("model") == default_model and p.get("endpoint") == default_endpoint
+                    for p in self.llm_profiles
+                )
+                if not is_duplicate:
+                    self.llm_profiles.insert(0, {
+                        "model": default_model,
+                        "endpoint": default_endpoint,
+                        "token_account": "__default__",
+                        "timeout": int(default_llm.get("timeout", 60) or 60),
+                    })
+
         self.llm_profile_combo.clear()
 
         if not self.llm_profiles:
@@ -552,10 +558,12 @@ class SettingsPage(QWidget):
                 endpoint = str(profile.get("endpoint", "")).strip()
                 token_account = str(profile.get("token_account", "")).strip()
 
-                self.llm_profile_combo.addItem(
-                    f"{model}  |  {endpoint}",
-                    token_account,
+                display_text = (
+                    f"默认 ({model}  |  {endpoint})"
+                    if token_account == "__default__"
+                    else f"{model}  |  {endpoint}"
                 )
+                self.llm_profile_combo.addItem(display_text, token_account)
 
         current_account = str(llm_cfg.get("token_account", "")).strip()
         current_index = self.llm_profile_combo.findData(current_account)
@@ -566,25 +574,11 @@ class SettingsPage(QWidget):
 
         self.llm_profile_combo.blockSignals(False)
 
-    def _save(self):
+    def _save_mail(self):
         username = self.mail_username_input.text().strip()
-        mail_password = self.mail_password_input.text()
-        llm_token = self.llm_token_input.text()
-
         if not username:
             QMessageBox.warning(self, "提示", "邮箱账号不能为空。")
             return
-
-        model = self.llm_model_input.text().strip()
-        if not model:
-            QMessageBox.warning(self, "提示", "大模型名称不能为空。")
-            return
-
-        endpoint = self.llm_endpoint_input.text().strip()
-        if not endpoint:
-            QMessageBox.warning(self, "提示", "接口地址不能为空。")
-            return
-
         try:
             update_user_config(
                 "mail",
@@ -596,37 +590,57 @@ class SettingsPage(QWidget):
                     "folder": self.mail_folder_input.text().strip() or "INBOX",
                 },
             )
+            mail_password = self.mail_password_input.text()
             if mail_password:
                 save_mail_password(username, mail_password)
+            QMessageBox.information(self, "保存成功", "邮箱设置已保存。")
+            self.reload()
+        except Exception as exc:
+            QMessageBox.critical(self, "保存失败", str(exc))
 
+    def _save_llm(self):
+        model = self.llm_model_input.text().strip()
+        if not model:
+            QMessageBox.warning(self, "提示", "大模型名称不能为空。")
+            return
+        endpoint = self.llm_endpoint_input.text().strip()
+        if not endpoint:
+            QMessageBox.warning(self, "提示", "接口地址不能为空。")
+            return
+        try:
             save_llm_profile(
                 model=model,
                 endpoint=endpoint,
                 timeout=self.llm_timeout_input.value(),
-                token=llm_token or None,
+                token=self.llm_token_input.text() or None,
             )
+            QMessageBox.information(self, "保存成功", "模型设置已保存。")
+            self.reload()
+        except Exception as exc:
+            QMessageBox.critical(self, "保存失败", str(exc))
 
+    def _save_app(self):
+        try:
             theme_values = {0: "system", 1: "light", 2: "dark"}
+            save_theme_preference(theme_values[self.theme_combo.currentIndex()])
+
+            # 清除"不再询问"标记
+            user_cfg = load_user_config()
+            user_cfg.pop("close_behavior", None)
+            save_user_config(user_cfg)
+
             update_user_config("app", {
-                "confirm_close": self.confirm_close_check.isChecked(),
-                "close_action": "minimize",
-                "appearance": {
-                    "theme": theme_values[self.theme_combo.currentIndex()],
-                },
                 "notification": {
                     "enabled": self.notify_enabled_check.isChecked(),
                     "duration": self.notify_duration_spin.value(),
                     "show_startup_banner": self.notify_startup_check.isChecked(),
                 },
             })
-
             update_user_config("security", {
                 "enable_desensitize": self.desensitize_check.isChecked(),
             })
-
-            QMessageBox.information(self, "保存成功", "设置已保存。")
+            QMessageBox.information(self, "保存成功", "应用设置已保存。")
             self.reload()
-
         except Exception as exc:
             QMessageBox.critical(self, "保存失败", str(exc))
 
@@ -650,7 +664,9 @@ class SettingsPage(QWidget):
         self.llm_timeout_input.setValue(int(profile.get("timeout", 60) or 60))
         self.llm_token_input.clear()
 
-        if get_llm_profile_token(token_account):
+        if token_account == "__default__":
+            self.llm_token_input.setPlaceholderText("默认配置已内置 Token，可直接使用")
+        elif get_llm_profile_token(token_account):
             self.llm_token_input.setPlaceholderText("已保存，留空则不修改")
         else:
             self.llm_token_input.setPlaceholderText("请输入大模型 Token")
@@ -659,6 +675,10 @@ class SettingsPage(QWidget):
         token_account = str(self.llm_profile_combo.currentData() or "")
         if not token_account:
             QMessageBox.information(self, "提示", "没有可删除的历史配置。")
+            return
+
+        if token_account == "__default__":
+            QMessageBox.information(self, "提示", "默认配置为内置预设，无法删除。")
             return
 
         confirm = QMessageBox.question(

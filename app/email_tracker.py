@@ -52,6 +52,28 @@ def get_fetched_uids(username: str, mailbox: str = "INBOX") -> set[int]:
         return {int(row["uid"]) for row in rows}
 
 
+def list_fetched_emails(username: str) -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, uid, message_id, subject, from_addr, date,
+                   fetched_at, mailbox
+            FROM processed_emails
+            WHERE username = ?
+            ORDER BY date DESC
+            """,
+            (username,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def delete_fetched_email(record_id: int) -> bool:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM processed_emails WHERE id = ?", (record_id,))
+        conn.commit()
+    return True
+
+
 def clear_tracking(username: str | None = None):
     with get_connection() as conn:
         if username:

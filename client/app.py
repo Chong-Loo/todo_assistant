@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from app.db import init_db
-from app.settings import load_config
+from app.settings import get_theme_preference, resolve_default_theme
 from client.main_window import MainWindow
 from client.styles import set_app_stylesheet
 
@@ -27,9 +27,16 @@ def _get_system_theme() -> str:
         return "dark" if luminance < 128 else "light"
 
 
+def _resolve_theme() -> str:
+    """获取最终生效的主题：优先使用独立保存的主题偏好，否则使用默认配置"""
+    preferred = get_theme_preference()
+    if preferred:
+        return preferred
+    return resolve_default_theme()
+
+
 def _load_and_apply_theme():
-    config = load_config()
-    theme = config.get("app", {}).get("appearance", {}).get("theme", "system")
+    theme = _resolve_theme()
     if theme == "system":
         is_dark = _get_system_theme() == "dark"
     else:
@@ -38,8 +45,7 @@ def _load_and_apply_theme():
 
 
 def _on_palette_changed():
-    config = load_config()
-    theme = config.get("app", {}).get("appearance", {}).get("theme", "system")
+    theme = _resolve_theme()
     if theme == "system":
         is_dark = _get_system_theme() == "dark"
         set_app_stylesheet(is_dark)

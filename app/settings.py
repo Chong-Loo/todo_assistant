@@ -20,9 +20,6 @@ MAIL_KEYRING_SERVICE = "todo_assistant"
 LLM_KEYRING_SERVICE = "todo_assistant_llm"
 LLM_TOKEN_ACCOUNT = "default"
 
-MODEL_OPTIONS: list[str] = []
-
-
 def _default_config_path() -> Path:
     env_path = os.environ.get("TODO_ASSISTANT_CONFIG")
     if env_path:
@@ -70,6 +67,14 @@ def _merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
             result[key] = value
 
     return result
+
+
+MODEL_OPTIONS: list[str] = []
+
+
+def load_default_config() -> dict[str, Any]:
+    """只读取默认配置文件（忽略用户配置），用于获取内置默认值"""
+    return _read_yaml(_default_config_path())
 
 
 def load_config() -> dict[str, Any]:
@@ -217,12 +222,7 @@ def delete_llm_profile(token_account: str) -> bool:
                 "token_account": first.get("token_account", ""),
             }
         else:
-            config["llm"] = {
-                "endpoint": "",
-                "model": "",
-                "timeout": 60,
-                "token_account": "",
-            }
+            config.pop("llm", None)
 
     try:
         keyring.delete_password(LLM_KEYRING_SERVICE, token_account)
@@ -271,3 +271,38 @@ def get_llm_token() -> str | None:
 def save_llm_token(token: str) -> None:
     if token:
         keyring.set_password(LLM_KEYRING_SERVICE, LLM_TOKEN_ACCOUNT, token)
+
+
+THEME_PREF_KEY = "theme_preference"
+
+
+def get_theme_preference() -> str | None:
+    val = load_user_config().get(THEME_PREF_KEY)
+    return str(val).strip() if val else None
+
+
+def save_theme_preference(theme: str) -> None:
+    config = load_user_config()
+    config[THEME_PREF_KEY] = theme
+    save_user_config(config)
+
+
+def clean_app_stale_keys() -> None:
+    """一次性迁移：删除 app 段中不再使用的旧键"""
+    config = load_user_config()
+    app = config.get("app", {})
+    if not isinstance(app, dict):
+        return
+    app.pop("appearance", None)
+    app.pop("confirm_close", None)
+    app.pop("close_action", None)
+    if not app:
+        config.pop("app", None)
+    else:
+        config["app"] = app
+    save_user_config(config)
+
+
+def resolve_default_theme() -> str:
+    """读取默认配置中的主题偏好"""
+    return load_default_config().get("app", {}).get("appearance", {}).get("theme", "system")

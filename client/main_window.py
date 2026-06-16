@@ -1,6 +1,7 @@
 from __future__ import annotations
 from PySide6.QtCore import QTime, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QMenu,
     QProgressBar,
@@ -19,9 +20,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from app.email_tracker import clear_tracking
+from app.settings import load_config, load_user_config, update_user_config
+from client.widgets.fetched_emails_dialog import FetchedEmailsDialog
 from app.notifier import notify_message
-from app.settings import load_config, update_user_config
 from app.todo_manager import load_normalized_todos
 from client.pages.dashboard_page import DashboardPage
 from client.pages.settings_page import SettingsPage
@@ -178,10 +179,10 @@ class MainWindow(QMainWindow):
         self.cancel_button.hide()
         header_layout.addWidget(self.cancel_button)
 
-        reset_tracking_btn = QPushButton("清空拉取记录")
-        reset_tracking_btn.setObjectName("SecondaryButton")
-        reset_tracking_btn.clicked.connect(self._reset_email_tracking)
-        header_layout.addWidget(reset_tracking_btn)
+        view_tracking_btn = QPushButton("查看拉取记录")
+        view_tracking_btn.setObjectName("SecondaryButton")
+        view_tracking_btn.clicked.connect(self._open_fetched_emails)
+        header_layout.addWidget(view_tracking_btn)
 
         refresh_button = QPushButton("刷新数据")
         refresh_button.setObjectName("SecondaryButton")
@@ -232,7 +233,6 @@ class MainWindow(QMainWindow):
 
     def _tray_quit(self):
         self.tray.hide()
-        from PySide6.QtWidgets import QApplication
         QApplication.instance().quit()
 
     def _tray_activated(self, reason):
@@ -283,23 +283,25 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         self._update_welcome()
 
-    def closeEvent(self, event):
-        config = load_config()
-        app_conf = config.get("app", {})
-        confirm_close = app_conf.get("confirm_close", True)
-        close_action = app_conf.get("close_action", "minimize")
+    def _do_minimize(self, event):
+        event.ignore()
+        self.hide()
+        self.tray.showMessage("智能待办助手", "已最小化到后台运行",
+                              QSystemTrayIcon.Information, 2000)
 
-        if not confirm_close:
-            if close_action == "minimize":
-                event.ignore()
-                self.hide()
-                self.tray.showMessage("智能待办助手", "已最小化到后台运行",
-                                      QSystemTrayIcon.Information, 2000)
+    def _do_quit(self, event):
+        event.accept()
+        self.tray.hide()
+        QApplication.instance().quit()
+
+    def closeEvent(self, event):
+        close_behavior = load_user_config().get("close_behavior", {})
+        if close_behavior.get("dont_ask"):
+            action = close_behavior.get("close_action", "minimize")
+            if action == "minimize":
+                self._do_minimize(event)
             else:
-                event.accept()
-                self.tray.hide()
-                from PySide6.QtWidgets import QApplication
-                QApplication.instance().quit()
+                self._do_quit(event)
             return
 
         msg = QMessageBox(self)
@@ -326,18 +328,12 @@ class MainWindow(QMainWindow):
 
         if clicked == minimize_btn:
             if dont_ask_flag:
-                update_user_config("app", {"confirm_close": False, "close_action": "minimize"})
-            event.ignore()
-            self.hide()
-            self.tray.showMessage("智能待办助手", "已最小化到后台运行",
-                                  QSystemTrayIcon.Information, 2000)
+                update_user_config("close_behavior", {"dont_ask": True, "close_action": "minimize"})
+            self._do_minimize(event)
         elif clicked == quit_btn:
             if dont_ask_flag:
-                update_user_config("app", {"confirm_close": False, "close_action": "quit"})
-            event.accept()
-            self.tray.hide()
-            from PySide6.QtWidgets import QApplication
-            QApplication.instance().quit()
+                update_user_config("close_behavior", {"dont_ask": True, "close_action": "quit"})
+            self._do_quit(event)
 
     def _switch_page(self, index: int):
         self.stack.setCurrentIndex(index)
@@ -360,22 +356,15 @@ class MainWindow(QMainWindow):
             self._refresh_all()
             self.statusBar().showMessage("人工待办已保存", 4000)
 
-    def _reset_email_tracking(self):
-        confirm = QMessageBox.question(
-            self,
-            "确认操作",
-            "清空邮件拉取记录后，下次分析会重新拉取所有邮件。\n确定继续吗？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if confirm != QMessageBox.Yes:
+    def _open_fetched_emails(self):
+        config = load_config()
+        mail_cfg = config.get("mail", {})
+        username = (mail_cfg.get("username") or "").strip()
+        if not username:
+            QMessageBox.warning(self, "提示", "请先在设置页配置邮箱。")
             return
-
-        try:
-            clear_tracking()
-            QMessageBox.information(self, "操作完成", "邮件拉取记录已清空，下次分析将重新拉取所有邮件。")
-        except Exception as exc:
-            QMessageBox.critical(self, "操作失败", str(exc))
+        dialog = FetchedEmailsDialog(username, parent=self)
+        dialog.exec()
 
     def _on_lookback_mode_changed(self):
         mode = self.lookback_combo.currentData()

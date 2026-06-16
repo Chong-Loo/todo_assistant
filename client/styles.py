@@ -133,27 +133,17 @@ QPushButton#CompactDangerButton:hover {
     border: 1px solid #fca5a5;
 }
 
-#SubSectionTitle {
+#SettingsGroupTitle {
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     color: #1e293b;
-    background: #f1f5f9;
-    border-radius: 8px;
-    padding: 8px 12px;
-    margin-bottom: 2px;
+    padding: 16px 0px 4px 0px;
 }
 
 #DbPathLabel {
     color: #64748b;
     font-size: 13px;
     font-family: "Consolas", "Courier New", monospace;
-}
-
-#SettingsSep {
-    background: #e2e8f0;
-    max-height: 1px;
-    margin-top: 6px;
-    border: none;
 }
 
 QPushButton#PrimaryButton {
@@ -311,7 +301,7 @@ QPushButton#StageCheck {
 
 QPushButton#StageCheck:checked {
     background-color: #22c55e;
-    border: 2px solid #22c55e;
+    border: 2px solid #16a34a;
     color: #ffffff;
 }
 
@@ -578,6 +568,33 @@ QComboBox:hover {
 QComboBox::drop-down {
     border: none;
     width: 24px;
+}
+
+QComboBox QAbstractItemView {
+    background: #ffffff;
+    color: #1f2937;
+    border: 1px solid #cbd5e1;
+    selection-background-color: #dbeafe;
+    selection-color: #1d4ed8;
+    outline: 0;
+}
+
+QTableWidget {
+    background: #ffffff;
+    color: #1f2937;
+    selection-background-color: #eef2ff;
+    selection-color: #1d4ed8;
+    alternate-background-color: #f8fafc;
+    gridline-color: #e5e7eb;
+}
+
+QHeaderView::section {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 800;
+    border: none;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 4px;
 }
 
 QLineEdit,
@@ -847,27 +864,17 @@ QPushButton#CompactDangerButton:hover {
     border: 1px solid #fca5a5;
 }
 
-#SubSectionTitle {
+#SettingsGroupTitle {
     font-size: 16px;
-    font-weight: 800;
-    color: #f1f5f9;
-    background: #1e293b;
-    border-radius: 8px;
-    padding: 8px 12px;
-    margin-bottom: 2px;
+    font-weight: 700;
+    color: #94a3b8;
+    padding: 16px 0px 4px 0px;
 }
 
 #DbPathLabel {
     color: #94a3b8;
     font-size: 13px;
     font-family: "Consolas", "Courier New", monospace;
-}
-
-#SettingsSep {
-    background: #475569;
-    max-height: 1px;
-    margin-top: 6px;
-    border: none;
 }
 
 QPushButton#PrimaryButton {
@@ -1026,7 +1033,7 @@ QPushButton#StageCheck {
 
 QPushButton#StageCheck:checked {
     background-color: #22c55e;
-    border: 2px solid #22c55e;
+    border: 2px solid #16a34a;
     color: #ffffff;
 }
 
@@ -1293,6 +1300,33 @@ QComboBox:hover {
 QComboBox::drop-down {
     border: none;
     width: 24px;
+}
+
+QComboBox QAbstractItemView {
+    background: #1e293b;
+    color: #f1f5f9;
+    border: 1px solid #475569;
+    selection-background-color: #334155;
+    selection-color: #f1f5f9;
+    outline: 0;
+}
+
+QTableWidget {
+    background: #1e293b;
+    color: #f1f5f9;
+    selection-background-color: #334155;
+    selection-color: #f1f5f9;
+    alternate-background-color: #0f172a;
+    gridline-color: #334153;
+}
+
+QHeaderView::section {
+    background: #0f172a;
+    color: #94a3b8;
+    font-weight: 800;
+    border: none;
+    border-bottom: 1px solid #334153;
+    padding: 8px 4px;
 }
 
 QLineEdit,
