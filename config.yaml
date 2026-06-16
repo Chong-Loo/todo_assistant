@@ -1,14 +1,14 @@
 mail:
-  host:                 # IMAP server address
-  port:                 # IMAP server port    
-  username:             # Email account username
+  host: ""                 # IMAP server address
+  port: 993                # IMAP server port    
+  username: ""          # Email account username
   use_ssl: true         # Whether to use SSL for IMAP connection
   folder: INBOX         # Mailbox folder to monitor (e.g., INBOX)
 
 llm:
   # 默认使用公司内网模型，打包后开箱即用
-  endpoint: 
-  model: 
+  endpoint: ""
+  model: ""
   timeout: 60
 
 task:
