@@ -12,6 +12,7 @@ env/
 .vscode/
 .idea/
 *.swp
+.codefree/
 
 # 临时文件
 *.log
