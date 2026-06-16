@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from app.db import init_db
-from app.settings import get_theme_preference, resolve_default_theme
+from app.settings import get_default_token, get_theme_preference, resolve_default_theme
 from client.main_window import MainWindow
 from client.styles import set_app_stylesheet
 
@@ -83,6 +83,7 @@ def _resolve_icon_path() -> Path:
 
 def main():
     init_db()
+    get_default_token()
 
     app = QApplication(sys.argv)
     app.setApplicationName("智能待办助手")

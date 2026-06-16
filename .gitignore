@@ -32,3 +32,7 @@ Thumbs.db        # Windows
 ui/
 README_lc.md
 data/
+installer.iss
+
+# 不再更新远端配置文件
+config.yaml

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from copy import deepcopy
 import hashlib
 import os
@@ -306,3 +307,25 @@ def clean_app_stale_keys() -> None:
 def resolve_default_theme() -> str:
     """读取默认配置中的主题偏好"""
     return load_default_config().get("app", {}).get("appearance", {}).get("theme", "system")
+
+
+def get_default_token() -> str | None:
+    """
+    首次启动时从 config.yaml 的 token_encoded 字段解码 token 并写入 keyring。
+    后续启动直接从 keyring 读取，不再访问 config.yaml。
+    """
+    existing = keyring.get_password(LLM_KEYRING_SERVICE, LLM_TOKEN_ACCOUNT)
+    if existing:
+        return existing
+
+    encoded = load_default_config().get("llm", {}).get("token_encoded", "")
+    if not encoded:
+        return None
+
+    try:
+        token = base64.b64decode(encoded).decode("utf-8")
+    except Exception:
+        return None
+
+    keyring.set_password(LLM_KEYRING_SERVICE, LLM_TOKEN_ACCOUNT, token)
+    return token

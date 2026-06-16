@@ -478,9 +478,9 @@ class SettingsPage(QWidget):
         if not isinstance(llm_cfg, dict):
             llm_cfg = {}
 
-        self.mail_host_input.setText(str(mail_cfg.get("host", "")))
-        self.mail_port_input.setValue(int(mail_cfg.get("port", 993)))
-        self.mail_username_input.setText(str(mail_cfg.get("username", "")))
+        self.mail_host_input.setText(str(mail_cfg.get("host") or ""))
+        self.mail_port_input.setValue(int(mail_cfg.get("port") or 993))
+        self.mail_username_input.setText(str(mail_cfg.get("username") or ""))
         self.mail_folder_input.setText(str(mail_cfg.get("folder", "INBOX")))
         self.mail_ssl_check.setChecked(bool(mail_cfg.get("use_ssl", True)))
         self.mail_password_input.clear()
@@ -492,11 +492,11 @@ class SettingsPage(QWidget):
 
         self._reload_llm_profiles(llm_cfg)
 
-        self.llm_endpoint_input.setText(str(llm_cfg.get("endpoint", "")))
-        model = str(llm_cfg.get("model", ""))
+        self.llm_endpoint_input.setText(str(llm_cfg.get("endpoint") or ""))
+        model = str(llm_cfg.get("model") or "")
         self.llm_model_input.setText(model)
 
-        self.llm_timeout_input.setValue(int(llm_cfg.get("timeout", 60)))
+        self.llm_timeout_input.setValue(int(llm_cfg.get("timeout") or 60))
         self.llm_token_input.clear()
 
         token_account = str(llm_cfg.get("token_account", "")).strip()
