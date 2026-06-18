@@ -601,10 +601,15 @@ class SettingsPage(QWidget):
 
     def _save_llm(self):
         model = self.llm_model_input.text().strip()
+        endpoint = self.llm_endpoint_input.text().strip()
+
+        if not model and not endpoint:
+            QMessageBox.information(self, "保存成功", "默认配置已就绪，可直接使用。")
+            return
+
         if not model:
             QMessageBox.warning(self, "提示", "大模型名称不能为空。")
             return
-        endpoint = self.llm_endpoint_input.text().strip()
         if not endpoint:
             QMessageBox.warning(self, "提示", "接口地址不能为空。")
             return
@@ -676,7 +681,7 @@ class SettingsPage(QWidget):
             else:
                 self.llm_token_input.setPlaceholderText("请输入大模型 Token")
 
-        self.llm_save_btn.setEnabled(token_account != "__default__")
+
 
     def _delete_llm_profile(self):
         token_account = str(self.llm_profile_combo.currentData() or "")
