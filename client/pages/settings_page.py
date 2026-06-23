@@ -47,6 +47,11 @@ class NoWheelSpinBox(QSpinBox):
         event.ignore()
 
 
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event):
+        event.ignore()
+
+
 class EditableModelComboBox(QComboBox):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -349,12 +354,14 @@ class SettingsPage(QWidget):
         app_root.addWidget(gen_group_title)
 
         self.confirm_close_check = QCheckBox("关闭时询问（最小化或退出）")
+        self.auto_start_check = QCheckBox("开机自动运行")
         gen_card = QFrame()
         gen_card.setObjectName("PanelCard")
         gen_layout = QVBoxLayout(gen_card)
         gen_layout.setContentsMargins(20, 18, 20, 18)
         gen_layout.setSpacing(10)
         gen_layout.addWidget(self._form_row("", self.confirm_close_check, compact=True))
+        gen_layout.addWidget(self._form_row("", self.auto_start_check, compact=True))
         app_root.addWidget(gen_card)
 
         # -- appearance group --
@@ -362,7 +369,7 @@ class SettingsPage(QWidget):
         app_group_title.setObjectName("SettingsGroupTitle")
         app_root.addWidget(app_group_title)
 
-        self.theme_combo = QComboBox()
+        self.theme_combo = NoWheelComboBox()
         self.theme_combo.addItems(["跟随系统", "浅色模式", "深色模式"])
         self.theme_combo.currentIndexChanged.connect(self._on_theme_changed)
         app_card = QFrame()
@@ -373,39 +380,19 @@ class SettingsPage(QWidget):
         app_card_layout.addWidget(self._form_row("主题", self.theme_combo))
         app_root.addWidget(app_card)
 
-        # -- notification group --
-        notif_group_title = QLabel("通知")
-        notif_group_title.setObjectName("SettingsGroupTitle")
-        app_root.addWidget(notif_group_title)
+        # -- data group --
+        data_group_title = QLabel("数据")
+        data_group_title.setObjectName("SettingsGroupTitle")
+        app_root.addWidget(data_group_title)
 
-        self.notify_enabled_check = QCheckBox("开启系统通知")
-        self.notify_duration_spin = NoWheelSpinBox()
-        self.notify_duration_spin.setRange(3, 60)
-        self.notify_duration_spin.setSuffix(" 秒")
-        self.notify_startup_check = QCheckBox("启动时显示统计横幅")
-        notif_card = QFrame()
-        notif_card.setObjectName("PanelCard")
-        notif_layout = QVBoxLayout(notif_card)
-        notif_layout.setContentsMargins(20, 18, 20, 18)
-        notif_layout.setSpacing(10)
-        notif_layout.addWidget(self._form_row("", self.notify_enabled_check, compact=True))
-        notif_layout.addWidget(self._form_row("通知显示时长", self.notify_duration_spin))
-        notif_layout.addWidget(self._form_row("", self.notify_startup_check, compact=True))
-        app_root.addWidget(notif_card)
-
-        # -- security group --
-        sec_group_title = QLabel("安全")
-        sec_group_title.setObjectName("SettingsGroupTitle")
-        app_root.addWidget(sec_group_title)
-
-        self.desensitize_check = QCheckBox("日志数据脱敏（隐藏邮箱地址等敏感信息）")
-        sec_card = QFrame()
-        sec_card.setObjectName("PanelCard")
-        sec_layout = QVBoxLayout(sec_card)
-        sec_layout.setContentsMargins(20, 18, 20, 18)
-        sec_layout.setSpacing(10)
-        sec_layout.addWidget(self._form_row("", self.desensitize_check, compact=True))
-        app_root.addWidget(sec_card)
+        self.auto_cleanup_check = QCheckBox("自动清理超过 30 天的已完成待办")
+        data_card = QFrame()
+        data_card.setObjectName("PanelCard")
+        data_layout = QVBoxLayout(data_card)
+        data_layout.setContentsMargins(20, 18, 20, 18)
+        data_layout.setSpacing(10)
+        data_layout.addWidget(self._form_row("", self.auto_cleanup_check, compact=True))
+        app_root.addWidget(data_card)
 
         # save button
         actions = QHBoxLayout()
@@ -510,21 +497,18 @@ class SettingsPage(QWidget):
             not bool(load_user_config().get("close_behavior", {}).get("dont_ask"))
         )
 
-        app_cfg = config.get("app", {})
-
         effective_theme = get_theme_preference() or resolve_default_theme()
         theme_map = {"system": 0, "light": 1, "dark": 2}
         self.theme_combo.blockSignals(True)
         self.theme_combo.setCurrentIndex(theme_map.get(effective_theme, 0))
         self.theme_combo.blockSignals(False)
 
-        notif_cfg = app_cfg.get("notification", {})
-        self.notify_enabled_check.setChecked(bool(notif_cfg.get("enabled", True)))
-        self.notify_duration_spin.setValue(int(notif_cfg.get("duration", 10)))
-        self.notify_startup_check.setChecked(bool(notif_cfg.get("show_startup_banner", True)))
+        gen_cfg = config.get("general", {})
+        self.auto_start_check.setChecked(bool(gen_cfg.get("auto_start", False)))
 
-        sec_cfg = config.get("security", {})
-        self.desensitize_check.setChecked(bool(sec_cfg.get("enable_desensitize", True)))
+        cleanup_cfg = config.get("cleanup", {})
+        keep_days = int(cleanup_cfg.get("keep_days", 30) or 30)
+        self.auto_cleanup_check.setChecked(keep_days > 0)
 
     def _reload_llm_profiles(self, llm_cfg: dict):
         self.llm_profile_combo.blockSignals(True)
@@ -635,20 +619,41 @@ class SettingsPage(QWidget):
             user_cfg.pop("close_behavior", None)
             save_user_config(user_cfg)
 
-            update_user_config("app", {
-                "notification": {
-                    "enabled": self.notify_enabled_check.isChecked(),
-                    "duration": self.notify_duration_spin.value(),
-                    "show_startup_banner": self.notify_startup_check.isChecked(),
-                },
+            update_user_config("general", {
+                "auto_start": self.auto_start_check.isChecked(),
             })
-            update_user_config("security", {
-                "enable_desensitize": self.desensitize_check.isChecked(),
+            update_user_config("cleanup", {
+                "keep_days": 30 if self.auto_cleanup_check.isChecked() else 0,
+                "keep_count": 30,
             })
+
+            # 开机自启
+            self._apply_auto_start(self.auto_start_check.isChecked())
+
             QMessageBox.information(self, "保存成功", "应用设置已保存。")
             self.reload()
         except Exception as exc:
             QMessageBox.critical(self, "保存失败", str(exc))
+
+    def _apply_auto_start(self, enabled: bool):
+        try:
+            import sys
+            import winreg
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
+                0, winreg.KEY_SET_VALUE,
+            )
+            if enabled:
+                winreg.SetValueEx(key, "智能待办助手", 0, winreg.REG_SZ, sys.executable)
+            else:
+                try:
+                    winreg.DeleteValue(key, "智能待办助手")
+                except FileNotFoundError:
+                    pass
+            winreg.CloseKey(key)
+        except Exception:
+            pass
 
     def _select_llm_profile(self):
         token_account = str(self.llm_profile_combo.currentData() or "")

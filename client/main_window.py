@@ -20,9 +20,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.network import check_internal_network
 from app.settings import load_config, load_user_config, update_user_config
 from client.widgets.fetched_emails_dialog import FetchedEmailsDialog
-from app.notifier import notify_message
 from app.todo_manager import load_normalized_todos
 from client.pages.dashboard_page import DashboardPage
 from client.pages.settings_page import SettingsPage
@@ -44,30 +44,7 @@ class MainWindow(QMainWindow):
         self._setup_tray()
         self._update_welcome()
         self._refresh_all()
-
-        QTimer.singleShot(0, self._on_startup)
-
-    def _on_startup(self):
-        config = load_config()
-        app_cfg = config.get("app", {})
-
-        # startup banner
-        show_banner = app_cfg.get("notification", {}).get("show_startup_banner", True)
-        if show_banner:
-            from app.todo_status import is_todo_overdue
-            todos = load_normalized_todos(cleanup=False)
-            active = [t for t in todos if t.get("status", "open") in {"open", "snoozed"}]
-            overdue = sum(1 for t in active if is_todo_overdue(t))
-            urgent = sum(1 for t in active if t.get("priority") == "urgent")
-            high = sum(1 for t in active if t.get("priority") == "high")
-
-            msg = (
-                f"当前待办 {len(active)} 个，"
-                f"逾期 {overdue} 个，"
-                f"紧急 {urgent} 个，"
-                f"高优先级 {high} 个。"
-            )
-            notify_message("智能待办助手", msg, timeout=8)
+        self._schedule_daily_job()
 
     def _build_ui(self):
         app_root = QWidget()
@@ -368,6 +345,21 @@ class MainWindow(QMainWindow):
     def _on_lookback_mode_changed(self):
         mode = self.lookback_combo.currentData()
         self.lookback_spinbox.setVisible(mode == -1)
+
+    def _schedule_daily_job(self):
+        now = QTime.currentTime()
+        target = QTime(9, 0)
+        secs = now.secsTo(target)
+        if secs <= 0:
+            secs += 86400
+        QTimer.singleShot(secs * 1000, self._try_daily_job)
+
+    def _try_daily_job(self):
+        if check_internal_network():
+            self._run_daily_job()
+        else:
+            self.statusBar().showMessage("内网不可达，跳过自动邮件分析", 5000)
+        QTimer.singleShot(86400 * 1000, self._try_daily_job)
 
     def _run_daily_job(self):
         if self.worker_thread and self.worker_thread.isRunning():
