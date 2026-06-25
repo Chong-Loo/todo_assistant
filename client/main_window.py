@@ -95,10 +95,15 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addStretch(1)
 
-        add_button = QPushButton("＋ 人工添加")
+        add_button = QPushButton("手动添加")
         add_button.setObjectName("PrimaryButton")
         add_button.clicked.connect(self._open_manual_dialog)
         sidebar_layout.addWidget(add_button)
+
+        image_button = QPushButton("图片识别")
+        image_button.setObjectName("PrimaryButton")
+        image_button.clicked.connect(self._open_image_dialog)
+        sidebar_layout.addWidget(image_button)
 
         root.addWidget(sidebar)
 
@@ -331,6 +336,13 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self._refresh_all()
             self.statusBar().showMessage("人工待办已保存", 4000)
+
+    def _open_image_dialog(self):
+        from client.widgets.image_todo_dialog import ImageTodoDialog
+        dialog = ImageTodoDialog(parent=self)
+        if dialog.exec():
+            self._refresh_all()
+            self.statusBar().showMessage("图片待办已保存", 4000)
 
     def _open_fetched_emails(self):
         config = load_config()

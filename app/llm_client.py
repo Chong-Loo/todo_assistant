@@ -109,3 +109,50 @@ def call_llm_json(messages):
         raise RuntimeError(
             "模型输出不是合法JSON"
         ) from e
+
+
+def call_llm_multimodal(system_prompt, user_text, image_b64):
+    config = load_config()
+    llm_cfg = config["llm"]
+    token = get_llm_token()
+    if not token:
+        raise RuntimeError("没有读取到 LLM Token")
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": llm_cfg["model"],
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": [
+                {"type": "text", "text": user_text},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
+            ]}
+        ],
+        "temperature": 0.1,
+        "stream": False
+    }
+
+    response = requests.post(
+        llm_cfg["endpoint"],
+        headers=headers,
+        json=payload,
+        timeout=llm_cfg.get("timeout", 60)
+    )
+    response.raise_for_status()
+    data = response.json()
+    content = data["choices"][0]["message"]["content"]
+    return clean_model_output(content)
+
+
+def call_llm_multimodal_json(system_prompt, user_text, image_b64):
+    result = call_llm_multimodal(system_prompt, user_text, image_b64)
+    try:
+        return json.loads(result)
+    except Exception as e:
+        print("\n===== 非法JSON =====\n")
+        print(result)
+        raise RuntimeError("模型输出不是合法JSON") from e

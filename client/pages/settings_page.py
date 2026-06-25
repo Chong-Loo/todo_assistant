@@ -544,7 +544,7 @@ class SettingsPage(QWidget):
                 token_account = str(profile.get("token_account", "")).strip()
 
                 display_text = (
-                    f"默认 ({model})"
+                    f"默认 (Qwen3.6)"
                     if token_account == "__default__"
                     else f"{model}  |  {endpoint}"
                 )
